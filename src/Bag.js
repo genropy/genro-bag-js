@@ -46,6 +46,26 @@ export class Bag {
         return Boolean(this._backref);
     }
 
+    /**
+     * Full path from root Bag to this Bag.
+     *
+     * Returns the dot-separated path from the root of the hierarchy to this
+     * Bag. Returns null if backref mode is not enabled or if this is the root.
+     *
+     * @returns {string|null} The full path or null.
+     */
+    get fullpath() {
+        if (this._parent !== null && this._parentNode !== null) {
+            const parentFullpath = this._parent.fullpath;
+            if (parentFullpath) {
+                return `${parentFullpath}.${this._parentNode.label}`;
+            } else {
+                return this._parentNode.label;
+            }
+        }
+        return null;
+    }
+
     get length() {
         return this._nodes.length;
     }

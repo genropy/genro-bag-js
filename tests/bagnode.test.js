@@ -129,4 +129,119 @@ describe('BagNode', () => {
 
         // Note: deeper inheritance tests require Bag with backref setup
     });
+
+    describe('position', () => {
+        it('should return null when no parent bag', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node.position, null);
+        });
+
+        // Note: position with parent bag tested in bag.test.js
+    });
+
+    describe('fullpath', () => {
+        it('should return null when no parent bag', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node.fullpath, null);
+        });
+
+        // Note: fullpath with parent bag tested in bag.test.js
+    });
+
+    describe('parentNode', () => {
+        it('should return null when no parent bag', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node.parentNode, null);
+        });
+
+        // Note: parentNode with parent bag tested in bag.test.js
+    });
+
+    describe('attributeOwnerNode', () => {
+        it('should return self when attribute exists', () => {
+            const node = new BagNode(null, 'test', 42, { color: 'red' });
+            assert.strictEqual(node.attributeOwnerNode('color'), node);
+        });
+
+        it('should return null when attribute not found and no parent', () => {
+            const node = new BagNode(null, 'test', 42, { color: 'red' });
+            assert.strictEqual(node.attributeOwnerNode('size'), null);
+        });
+
+        it('should check attribute value when provided', () => {
+            const node = new BagNode(null, 'test', 42, { color: 'red' });
+            assert.strictEqual(node.attributeOwnerNode('color', 'red'), node);
+            assert.strictEqual(node.attributeOwnerNode('color', 'blue'), null);
+        });
+    });
+
+    describe('asTuple', () => {
+        it('should return array with label, value, attr, resolver', () => {
+            const node = new BagNode(null, 'test', 42, { color: 'red' });
+            const tuple = node.asTuple();
+            assert.strictEqual(tuple[0], 'test');
+            assert.strictEqual(tuple[1], 42);
+            assert.deepStrictEqual(tuple[2], { color: 'red' });
+            assert.strictEqual(tuple[3], null);
+        });
+    });
+
+    describe('node subscribe/unsubscribe', () => {
+        it('should call subscriber on setValue', () => {
+            const node = new BagNode(null, 'test', 10);
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+
+            node.setValue(20);
+
+            assert.strictEqual(events.length, 1);
+            assert.strictEqual(events[0].evt, 'upd_value');
+            assert.strictEqual(events[0].info, 10); // oldvalue
+            assert.strictEqual(events[0].node, node);
+        });
+
+        it('should call subscriber on setAttr', () => {
+            const node = new BagNode(null, 'test', 10, { a: 1 });
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+
+            node.setAttr({ b: 2 });
+
+            assert.strictEqual(events.length, 1);
+            assert.strictEqual(events[0].evt, 'upd_attrs');
+            assert.deepStrictEqual(events[0].info, ['b']); // changed attrs
+        });
+
+        it('should not call subscriber when trigger=false', () => {
+            const node = new BagNode(null, 'test', 10);
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+
+            node.setValue(20, false);
+            node.setAttr({ a: 1 }, false);
+
+            assert.strictEqual(events.length, 0);
+        });
+
+        it('should not call subscriber when value unchanged', () => {
+            const node = new BagNode(null, 'test', 10);
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+
+            node.setValue(10); // same value
+
+            assert.strictEqual(events.length, 0);
+        });
+
+        it('should unsubscribe correctly', () => {
+            const node = new BagNode(null, 'test', 10);
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+            node.unsubscribe('test');
+
+            node.setValue(20);
+
+            assert.strictEqual(events.length, 0);
+        });
+    });
 });

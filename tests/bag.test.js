@@ -277,6 +277,112 @@ describe('Bag', () => {
         });
     });
 
+    describe('fullpath', () => {
+        it('should return null for root bag', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            assert.strictEqual(bag.fullpath, null);
+        });
+
+        it('should return path for nested bag with backref', () => {
+            const root = new Bag();
+            root.setBackref();
+            root.setItem('level1.level2.value', 42);
+
+            const level1 = root.getItem('level1');
+            const level2 = root.getItem('level1.level2');
+
+            // level1 is a child of root
+            assert.strictEqual(level1.fullpath, 'level1');
+            // level2 is a child of level1
+            assert.strictEqual(level2.fullpath, 'level1.level2');
+        });
+    });
+
+    describe('node position and fullpath', () => {
+        it('should return node position in parent', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+
+            assert.strictEqual(bag.getNode('a').position, 0);
+            assert.strictEqual(bag.getNode('b').position, 1);
+            assert.strictEqual(bag.getNode('c').position, 2);
+        });
+
+        it('should return node fullpath with backref', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('parent.child.grandchild', 'deep');
+
+            const childNode = bag.getNode('parent.child');
+            const grandchildNode = bag.getNode('parent.child.grandchild');
+
+            // Note: node fullpath depends on parent bag fullpath
+            // which is only set when backref is enabled
+            assert.strictEqual(childNode.fullpath, 'parent.child');
+            assert.strictEqual(grandchildNode.fullpath, 'parent.child.grandchild');
+        });
+
+        it('should return parentNode for nested nodes', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('parent.child', 'value');
+
+            const parentNode = bag.getNode('parent');
+            const childNode = bag.getNode('parent.child');
+
+            // childNode's parentNode is parentNode (the node containing the parent Bag)
+            assert.strictEqual(childNode.parentNode, parentNode);
+        });
+    });
+
+    describe('attributeOwnerNode', () => {
+        it('should find attribute owner in ancestor chain', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('parent', new Bag(), { inherited: 'from-parent' });
+            bag.setItem('parent.child', 'value', { own: 'attr' });
+
+            const childNode = bag.getNode('parent.child');
+
+            // own attribute
+            assert.strictEqual(childNode.attributeOwnerNode('own'), childNode);
+
+            // inherited attribute - should find parent node
+            const owner = childNode.attributeOwnerNode('inherited');
+            assert.strictEqual(owner, bag.getNode('parent'));
+        });
+
+        it('should return null when attribute not found in chain', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('parent.child', 'value');
+
+            const childNode = bag.getNode('parent.child');
+            assert.strictEqual(childNode.attributeOwnerNode('nonexistent'), null);
+        });
+
+        it('should check attribute value when provided', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('parent', new Bag(), { color: 'red' });
+            bag.setItem('parent.child', 'value', { color: 'blue' });
+
+            const childNode = bag.getNode('parent.child');
+
+            // Find owner of color='blue'
+            assert.strictEqual(childNode.attributeOwnerNode('color', 'blue'), childNode);
+
+            // Find owner of color='red' (should be parent)
+            assert.strictEqual(childNode.attributeOwnerNode('color', 'red'), bag.getNode('parent'));
+
+            // Find owner of color='green' (should be null)
+            assert.strictEqual(childNode.attributeOwnerNode('color', 'green'), null);
+        });
+    });
+
     describe('subscribe/unsubscribe', () => {
         it('should enable backref when subscribing', () => {
             const bag = new Bag();

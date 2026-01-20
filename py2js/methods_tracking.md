@@ -28,9 +28,9 @@
 | `resolver` | `resolver` | ⏳ | Per resolver support |
 | `compiled` | `compiled` | ⏳ | Per builder support |
 | `attr` | `attr` | ✅ | getter |
-| `position` | `position` | ⏳ | |
-| `fullpath` | `fullpath` | ⏳ | |
-| `parent_node` | `parentNode` | ⏳ | |
+| `position` | `position` | ✅ | getter |
+| `fullpath` | `fullpath` | ✅ | getter |
+| `parent_node` | `parentNode` | ✅ | getter |
 | `is_valid` | `isValid` | ⏳ | |
 | `is_branch` | `isBranch` | ⏳ | |
 | **Methods** | | | |
@@ -42,11 +42,11 @@
 | `del_attr` | `delAttr` | ✅ | Supporta comma-separated |
 | `has_attr` | `hasAttr` | ✅ | Con value check opzionale |
 | `get_inherited_attributes` | `getInheritedAttributes` | ✅ | |
-| `attribute_owner_node` | `attributeOwnerNode` | ⏳ | |
-| `subscribe` | `subscribe` | ⏳ | |
-| `unsubscribe` | `unsubscribe` | ⏳ | |
+| `attribute_owner_node` | `attributeOwnerNode` | ✅ | |
+| `subscribe` | `subscribe` | ✅ | Node-level subscription |
+| `unsubscribe` | `unsubscribe` | ✅ | |
 | `diff` | `diff` | ⏳ | |
-| `as_tuple` | `asTuple` | ⏳ | |
+| `as_tuple` | `asTuple` | ✅ | |
 | `to_json` | `toJson` | ⏳ | |
 
 ---
@@ -99,7 +99,7 @@
 | `parent` | `parent` | ✅ | getter/setter |
 | `parent_node` | `parentNode` | ✅ | getter/setter |
 | `backref` | `backref` | ✅ | getter |
-| `fullpath` | `fullpath` | ⏳ | |
+| `fullpath` | `fullpath` | ✅ | getter |
 | `root` | `root` | ⏳ | |
 | `in_async_context` | - | ❌ | JS è sempre async-capable |
 | `attributes` | `attributes` | ⏳ | |

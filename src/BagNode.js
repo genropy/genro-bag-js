@@ -22,18 +22,20 @@ export class BagNode {
         this._value = null;
         this._attr = {};
         this._parentBag = null;
+        this._resolver = null;
+        this._nodeSubscribers = {};
 
         // Set parent
         this.parentBag = parentBag;
 
-        // Process attributes
+        // Process attributes - trigger=false during construction
         if (attr) {
-            this.setAttr(attr);
+            this.setAttr(attr, false);
         }
 
-        // Process value
+        // Process value - trigger=false during construction
         if (value !== null) {
-            this.setValue(value);
+            this.setValue(value, false);
         }
     }
 
@@ -94,18 +96,55 @@ export class BagNode {
      * @param {string} [reason=null] - Optional reason string for the trigger.
      */
     setValue(value, trigger = true, attributes = null, updattr = true, removeNullAttributes = true, reason = null) {
+        // TODO: Handle BagResolver passed as value
+        // TODO: Handle BagNode passed as value - extract its value and attrs
+
         const oldvalue = this._value;
         this._value = value;
 
-        // Handle attributes if provided
+        // Check if actually changed
+        let changed = oldvalue !== this._value;
+        if (!changed && attributes) {
+            for (const [attrK, attrV] of Object.entries(attributes)) {
+                if (this._attr[attrK] !== attrV) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        trigger = trigger && changed;
+
+        // Event type: 'upd_value' for value-only, 'upd_value_attr' for combined
+        // Note: evt is used ONLY for parent notification, not for node subscribers
+        let evt = 'upd_value';
+
         if (attributes !== null) {
+            evt = 'upd_value_attr';
+            // Call setAttr with trigger=false: node subscribers receive only
+            // 'upd_value' from here, not a separate 'upd_attrs' event
             this.setAttr(attributes, false, updattr, removeNullAttributes);
         }
 
-        // TODO: trigger events when backref support is added
-        // if (trigger && this._parentBag && this._parentBag.backref) {
-        //     this._parentBag._onNodeChanged(this, [this.label], oldvalue, 'upd_value', reason);
-        // }
+        // Node subscribers always receive 'upd_value' (not 'upd_value_attr')
+        // They don't need to know if attributes also changed
+        if (trigger) {
+            for (const subscriber of Object.values(this._nodeSubscribers)) {
+                subscriber({ node: this, info: oldvalue, evt: 'upd_value' });
+            }
+        }
+
+        if (this._parentBag !== null && this._parentBag.backref) {
+            // If value is a Bag, set up backref
+            if (value && typeof value._htraverse === 'function') {
+                value.setBackref(this, this._parentBag);
+            }
+            if (trigger) {
+                this._parentBag._onNodeChanged(
+                    this, [this.label], evt, oldvalue, reason
+                );
+            }
+        }
     }
 
     /**
@@ -150,12 +189,18 @@ export class BagNode {
      * @param {boolean} [removeNullAttributes=true] - If true, remove null values from attributes.
      */
     setAttr(attr = null, trigger = true, updattr = true, removeNullAttributes = true) {
-        if (!updattr) {
-            this._attr = {};
+        const newAttr = attr || {};
+
+        // Save old state BEFORE any modification (only if needed for subscribers)
+        const hasNodeSubscribers = Object.keys(this._nodeSubscribers).length > 0;
+        const oldattr = (trigger && hasNodeSubscribers) ? { ...this._attr } : null;
+
+        if (updattr) {
+            Object.assign(this._attr, newAttr);
+        } else {
+            this._attr = { ...newAttr };
         }
-        if (attr) {
-            Object.assign(this._attr, attr);
-        }
+
         if (removeNullAttributes) {
             for (const key of Object.keys(this._attr)) {
                 if (this._attr[key] === null) {
@@ -163,7 +208,28 @@ export class BagNode {
                 }
             }
         }
-        // TODO: trigger events when backref support is added
+
+        if (trigger) {
+            if (oldattr !== null) {
+                // Find which attributes changed
+                const updAttrs = [];
+                for (const [k, v] of Object.entries(this._attr)) {
+                    if (oldattr[k] !== v) {
+                        updAttrs.push(k);
+                    }
+                }
+                for (const subscriber of Object.values(this._nodeSubscribers)) {
+                    subscriber({ node: this, info: updAttrs, evt: 'upd_attrs' });
+                }
+            }
+
+            if (this._parentBag !== null && this._parentBag.backref) {
+                const reason = trigger === true ? 'true' : String(trigger);
+                this._parentBag._onNodeChanged(
+                    this, [this.label], 'upd_attrs', null, reason
+                );
+            }
+        }
     }
 
     /**
@@ -212,6 +278,111 @@ export class BagNode {
             inherited = this._parentBag.parentNode.getInheritedAttributes();
         }
         return { ...inherited, ...this._attr };
+    }
+
+    // -------------------------------------------------------------------------
+    // Subscription Methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Subscribe to changes on this specific node.
+     *
+     * @param {string} subscriberId - Unique identifier for this subscription.
+     * @param {Function} callback - Function to call on changes.
+     *
+     * Callback signature: callback({ node, info, evt })
+     * - node: This BagNode
+     * - info: oldvalue (for 'upd_value') or list of changed attrs (for 'upd_attrs')
+     * - evt: Event type ('upd_value' or 'upd_attrs')
+     */
+    subscribe(subscriberId, callback) {
+        this._nodeSubscribers[subscriberId] = callback;
+    }
+
+    /**
+     * Unsubscribe from changes on this node.
+     *
+     * @param {string} subscriberId - The subscription identifier to remove.
+     */
+    unsubscribe(subscriberId) {
+        delete this._nodeSubscribers[subscriberId];
+    }
+
+    // -------------------------------------------------------------------------
+    // Navigation Properties
+    // -------------------------------------------------------------------------
+
+    /**
+     * Get this node's index position within parent Bag.
+     *
+     * @returns {number|null} The 0-based index of this node in the parent's node list,
+     *   or null if this node has no parent.
+     */
+    get position() {
+        if (this._parentBag === null) {
+            return null;
+        }
+        return this._parentBag._nodes.index(this.label);
+    }
+
+    /**
+     * Get dot-separated path from root to this node.
+     *
+     * @returns {string|null} Full path or null if no parent.
+     */
+    get fullpath() {
+        if (this._parentBag !== null) {
+            const parentFullpath = this._parentBag.fullpath;
+            if (parentFullpath !== null) {
+                return `${parentFullpath}.${this.label}`;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get the node that contains this node's parent Bag.
+     *
+     * In the hierarchy: grandparent_bag contains parent_node, whose value
+     * is parent_bag, which contains this node.
+     *
+     * @returns {BagNode|null} The parent node or null.
+     */
+    get parentNode() {
+        if (this._parentBag) {
+            return this._parentBag.parentNode;
+        }
+        return null;
+    }
+
+    /**
+     * Find the ancestor node that owns a given attribute.
+     *
+     * @param {string} attrname - Attribute name to search for.
+     * @param {*} [attrvalue=null] - If provided, also match this value.
+     * @returns {BagNode|null} The node that owns the attribute, or null.
+     */
+    attributeOwnerNode(attrname, attrvalue = null) {
+        let curr = this;
+        if (attrvalue === null) {
+            while (curr && !(attrname in curr._attr)) {
+                curr = curr.parentNode;
+            }
+        } else {
+            while (curr && curr._attr[attrname] !== attrvalue) {
+                curr = curr.parentNode;
+            }
+        }
+        return curr;
+    }
+
+    /**
+     * Return node data as a tuple (array).
+     *
+     * @returns {Array} Array of [label, value, attr, resolver].
+     */
+    asTuple() {
+        return [this.label, this._value, this._attr, this._resolver || null];
     }
 
     // -------------------------------------------------------------------------
