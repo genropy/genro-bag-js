@@ -590,6 +590,446 @@ export class Bag {
         return this._nodes.items();
     }
 
+    // -------------------------------------------------------------------------
+    // Query Methods (BagQuery)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Get the actual list of nodes contained in the Bag.
+     *
+     * The getNodes method works as the filter of a list.
+     *
+     * @param {Function|null} [condition=null] - Optional callable that takes a BagNode and returns bool.
+     * @returns {BagNode[]} List of BagNodes, optionally filtered by condition.
+     */
+    getNodes(condition = null) {
+        if (!condition) {
+            return [...this._nodes];
+        }
+        return [...this._nodes].filter(n => condition(n));
+    }
+
+    /**
+     * Return the first BagNode whose value contains key=value.
+     *
+     * Searches only direct children (not recursive).
+     * The node's value must be dict-like (Bag or dict).
+     *
+     * @param {string} key - Key to look for in node.value.
+     * @param {*} value - Value to match.
+     * @returns {BagNode|null} BagNode if found, null otherwise.
+     */
+    getNodeByValue(key, value) {
+        for (const node of this._nodes) {
+            const nodeValue = node.value;
+            if (nodeValue && nodeValue.get && nodeValue.get(key) === value) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Return the first BagNode with the requested attribute value.
+     *
+     * Search strategy (hybrid depth-first with level priority):
+     * 1. First checks all direct children of current Bag
+     * 2. Then recursively searches into sub-Bags (depth-first)
+     *
+     * This means a match at the current level is always found before
+     * descending into nested Bags, but once descent begins, it proceeds
+     * depth-first through the subtree before checking siblings.
+     *
+     * @param {string} attr - Attribute name to search.
+     * @param {*} value - Attribute value to match.
+     * @returns {BagNode|null} BagNode if found, null otherwise.
+     */
+    getNodeByAttr(attr, value) {
+        const subBags = [];
+        for (const node of this._nodes) {
+            if (node.hasAttr(attr, value)) {
+                return node;
+            }
+            if (node.value instanceof Bag) {
+                subBags.push(node);
+            }
+        }
+
+        for (const node of subBags) {
+            const found = node.value.getNodeByAttr(attr, value);
+            if (found) {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if the Bag is empty.
+     *
+     * A node is considered non-empty if:
+     * - It has a resolver (even if static value is null, the resolver
+     *   represents potential content that can be loaded)
+     * - It has a non-null static value (unless zeroIsNone/blankIsNone apply)
+     *
+     * This method never triggers resolver I/O - it only checks static values
+     * and resolver presence.
+     *
+     * @param {boolean} [zeroIsNone=false] - If true, treat 0 values as empty.
+     * @param {boolean} [blankIsNone=false] - If true, treat blank strings as empty.
+     * @returns {boolean} True if Bag is empty according to criteria, false otherwise.
+     */
+    isEmpty(zeroIsNone = false, blankIsNone = false) {
+        if (this._nodes.length === 0) {
+            return true;
+        }
+
+        for (const node of this._nodes) {
+            // A node with a resolver is not empty (has potential content)
+            if (node._resolver !== null) {
+                return false;
+            }
+            const v = node.getValue(true);  // static=true
+            if (v === null || v === undefined) {
+                continue;
+            }
+            if (zeroIsNone && v === 0) {
+                continue;
+            }
+            if (blankIsNone && v === '') {
+                continue;
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Query Bag elements, extracting specified data.
+     *
+     * @param {string|Array|null} [what=null] - String of special keys separated by comma, or array of keys.
+     *     Special keys:
+     *     - '#k': label of each item
+     *     - '#v': value of each item
+     *     - '#v.path': inner values of each item
+     *     - '#__v': static value (always bypasses resolver)
+     *     - '#a': all attributes of each item
+     *     - '#a.attrname': specific attribute for each item
+     *     - '#p': path (full path from root, useful with deep=true)
+     *     - '#n': node (the BagNode itself)
+     *     - callable: custom function applied to each node
+     * @param {Function|null} [condition=null] - Optional callable filter (receives BagNode, returns bool).
+     * @param {boolean} [iter=false] - If true, return a generator instead of an array.
+     * @param {boolean} [deep=false] - If true, traverse recursively (depth-first) instead of first level only.
+     * @param {boolean} [leaf=true] - If true (default), include leaf nodes (non-Bag values).
+     * @param {boolean} [branch=true] - If true (default), include branch nodes (Bag values).
+     * @param {number|null} [limit=null] - Maximum number of results to return. null means no limit.
+     * @param {boolean} [isStatic=true] - If true (default), don't trigger resolvers during traversal.
+     * @returns {Array|Generator} Array of tuples, or generator if iter=true.
+     */
+    query(what = null, condition = null, iter = false, deep = false, leaf = true, branch = true, limit = null, isStatic = true) {
+        if (!what) {
+            what = '#k,#v,#a';
+        }
+
+        let obj = this;
+        let whatsplit;
+
+        if (typeof what === 'string') {
+            if (what.includes(':')) {
+                const [where, whatPart] = what.split(':');
+                obj = this.getItem(where);
+                what = whatPart;
+            }
+            whatsplit = what.split(',').map(x => x.trim());
+        } else {
+            whatsplit = what;
+        }
+
+        const _extractValue = (node, w, path, isDeep) => {
+            if (w === '#k') {
+                return node.label;
+            } else if (w === '#p') {
+                return path;
+            } else if (w === '#n') {
+                return node;
+            } else if (typeof w === 'function') {
+                return w(node);
+            } else if (w === '#v') {
+                const v = node.getValue(isStatic);
+                // With deep=true, Bag values return null (content comes in later iterations)
+                return isDeep && v instanceof Bag ? null : v;
+            } else if (w.startsWith('#v.')) {
+                const innerPath = w.split('.').slice(1).join('.');
+                const value = node.getValue(isStatic);
+                return value && value.getItem ? value.getItem(innerPath) : null;
+            } else if (w === '#__v') {
+                return node.getValue(true);  // Always static
+            } else if (w.startsWith('#a')) {
+                const attr = w.includes('.') ? w.split('.').slice(1).join('.') : null;
+                return node.getAttr(attr);
+            } else {
+                const value = node.getValue(isStatic);
+                return value && value.getItem ? value.getItem(w) : null;
+            }
+        };
+
+        const _shouldInclude = (node) => {
+            const isBranch = node.getValue(isStatic) instanceof Bag;
+            if (isBranch && !branch) {
+                return false;
+            }
+            if (!isBranch && !leaf) {
+                return false;
+            }
+            return condition === null || condition(node);
+        };
+
+        function* _iterDigest() {
+            let count = 0;
+            if (deep) {
+                // Use walk() for recursive traversal
+                for (const [path, node] of obj.walk(isStatic)) {
+                    if (_shouldInclude(node)) {
+                        if (whatsplit.length === 1) {
+                            yield _extractValue(node, whatsplit[0], path, true);
+                        } else {
+                            yield whatsplit.map(w => _extractValue(node, w, path, true));
+                        }
+                        count++;
+                        if (limit !== null && count >= limit) {
+                            return;
+                        }
+                    }
+                }
+            } else {
+                // First level only
+                for (const node of obj._nodes) {
+                    if (_shouldInclude(node)) {
+                        const path = node.label;
+                        if (whatsplit.length === 1) {
+                            yield _extractValue(node, whatsplit[0], path, false);
+                        } else {
+                            yield whatsplit.map(w => _extractValue(node, w, path, false));
+                        }
+                        count++;
+                        if (limit !== null && count >= limit) {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (iter) {
+            return _iterDigest();
+        }
+
+        return [..._iterDigest()];
+    }
+
+    /**
+     * Return a list of tuples with keys/values/attributes (backward compatible).
+     *
+     * This is an alias for query() with iter=false, deep=false for backward
+     * compatibility. Use query() for new code.
+     *
+     * @param {string|Array|null} [what=null] - String of special keys separated by comma, or array of keys.
+     * @param {Function|null} [condition=null] - Optional callable filter (receives BagNode, returns bool).
+     * @param {boolean} [asColumns=false] - If true, return array of arrays (transposed).
+     * @returns {Array} Array of tuples (or array of arrays if asColumns=true).
+     */
+    digest(what = null, condition = null, asColumns = false) {
+        const result = this.query(what, condition, false, false);
+
+        if (asColumns) {
+            if (!result || result.length === 0) {
+                const whatStr = typeof what === 'string' ? what : '#k,#v,#a';
+                const whatsplit = whatStr.split(',').map(x => x.trim());
+                return whatsplit.map(() => []);
+            }
+            const resultList = [...result];
+            if (resultList.length && Array.isArray(resultList[0])) {
+                // Transpose: list of rows → list of columns
+                const numCols = resultList[0].length;
+                const columns = [];
+                for (let i = 0; i < numCols; i++) {
+                    columns.push(resultList.map(row => row[i]));
+                }
+                return columns;
+            }
+            return [resultList];
+        }
+        return [...result];
+    }
+
+    /**
+     * Return digest result as columns.
+     *
+     * @param {string|Array} cols - Column names as comma-separated string or array.
+     * @param {boolean} [attrMode=false] - If true, prefix columns with '#a.' for attribute access.
+     * @returns {Array} Array of arrays (columns).
+     */
+    columns(cols, attrMode = false) {
+        if (typeof cols === 'string') {
+            cols = cols.split(',');
+        }
+        const mode = attrMode ? '#a.' : '';
+        const what = cols.map(col => `${mode}${col}`).join(',');
+        return this.digest(what, null, true);
+    }
+
+    /**
+     * Sum values or attributes.
+     *
+     * @param {string} [what='#v'] - What to sum (same syntax as query).
+     *     - '#v': sum values
+     *     - '#a.attrname': sum attribute
+     *     - '#v,#a.price': multiple sums (returns array)
+     * @param {Function|null} [condition=null] - Optional callable filter (receives BagNode, returns bool).
+     * @param {boolean} [deep=false] - If true, recursively sum through nested Bags.
+     * @returns {number|number[]} Sum as number, or array of numbers if multiple what specs.
+     *
+     * @example
+     * bag.sum()                    // sum all values
+     * bag.sum('#a.price')          // sum 'price' attribute
+     * bag.sum('#v,#a.qty')         // [sum_values, sum_qty]
+     * bag.sum('#v', n => n.getAttr('active'))  // filtered sum
+     * bag.sum('#a.qty', null, true)  // recursive sum
+     */
+    sum(what = '#v', condition = null, deep = false) {
+        if (what.includes(',')) {
+            return what.split(',').map(w => {
+                let total = 0;
+                for (const v of this.query(w.trim(), condition, false, deep)) {
+                    total += (v || 0);
+                }
+                return total;
+            });
+        }
+        let total = 0;
+        for (const v of this.query(what, condition, false, deep)) {
+            total += (v || 0);
+        }
+        return total;
+    }
+
+    /**
+     * Sort nodes in place.
+     *
+     * @param {string|Function} [key='#k:a'] - Sort specification string or callable.
+     *     If callable, used directly as key function for sort.
+     *     If string, format is 'criterion:mode' or multiple 'c1:m1,c2:m2'.
+     *
+     *     Criteria:
+     *     - '#k': sort by label
+     *     - '#v': sort by value
+     *     - '#a.attrname': sort by attribute
+     *     - 'fieldname': sort by field in value (if value is dict/Bag)
+     *
+     *     Modes:
+     *     - 'a': ascending, case-insensitive (default)
+     *     - 'A': ascending, case-sensitive
+     *     - 'd': descending, case-insensitive
+     *     - 'D': descending, case-sensitive
+     *
+     * @returns {Bag} Self (for chaining).
+     *
+     * @example
+     * bag.sort('#k')           // by label ascending
+     * bag.sort('#k:d')         // by label descending
+     * bag.sort('#v:A')         // by value ascending, case-sensitive
+     * bag.sort('#a.name:a')    // by attribute 'name'
+     * bag.sort('field:d')      // by field in value
+     * bag.sort('#k:a,#v:d')    // multi-level sort
+     * bag.sort(n => n.value)   // custom key function
+     */
+    sort(key = '#k:a') {
+        /**
+         * Create sort key handling null/undefined and case sensitivity.
+         * @param {*} value - The value to create key for.
+         * @param {boolean} caseInsensitive - Whether to ignore case for strings.
+         * @returns {Array} Tuple [priority, value] where priority 1 means null (sort last).
+         */
+        const sortKey = (value, caseInsensitive) => {
+            if (value === null || value === undefined) {
+                return [1, ''];  // null/undefined values sort last
+            }
+            if (caseInsensitive && typeof value === 'string') {
+                return [0, value.toLowerCase()];
+            }
+            return [0, value];
+        };
+
+        /**
+         * Compare two sort keys.
+         * @param {Array} a - First sort key [priority, value].
+         * @param {Array} b - Second sort key [priority, value].
+         * @returns {number} Comparison result for Array.sort.
+         */
+        const compareKeys = (a, b) => {
+            // First compare by priority (nulls last)
+            if (a[0] !== b[0]) {
+                return a[0] - b[0];
+            }
+            // Then compare by value
+            if (a[1] < b[1]) return -1;
+            if (a[1] > b[1]) return 1;
+            return 0;
+        };
+
+        if (typeof key === 'function') {
+            this._nodes._list.sort((a, b) => {
+                const ka = key(a);
+                const kb = key(b);
+                if (ka < kb) return -1;
+                if (ka > kb) return 1;
+                return 0;
+            });
+        } else {
+            const levels = key.split(',');
+            levels.reverse();  // process in reverse for stable multi-level sort
+            for (const level of levels) {
+                let what, mode;
+                if (level.includes(':')) {
+                    [what, mode] = level.split(':', 2);
+                } else {
+                    what = level;
+                    mode = 'a';
+                }
+                what = what.trim();
+                mode = mode.trim();
+
+                const reverse = mode === 'd' || mode === 'D';
+                const caseInsensitive = mode === 'a' || mode === 'd';
+
+                let keyFn;
+                if (what.toLowerCase() === '#k') {
+                    keyFn = n => sortKey(n.label, caseInsensitive);
+                } else if (what.toLowerCase() === '#v') {
+                    keyFn = n => sortKey(n.value, caseInsensitive);
+                } else if (what.toLowerCase().startsWith('#a.')) {
+                    const attrname = what.slice(3);
+                    keyFn = n => sortKey(n.getAttr(attrname), caseInsensitive);
+                } else {
+                    // Sort by field in value
+                    keyFn = n => sortKey(
+                        n.value ? n.value[what] : null,
+                        caseInsensitive
+                    );
+                }
+
+                this._nodes._list.sort((a, b) => {
+                    const result = compareKeys(keyFn(a), keyFn(b));
+                    return reverse ? -result : result;
+                });
+            }
+        }
+        return this;
+    }
+
     /**
      * Check equality with another Bag.
      *
@@ -607,22 +1047,66 @@ export class Bag {
     /**
      * Walk the tree depth-first.
      *
-     * Generator mode: yields [path, node] tuples for all nodes in the tree.
+     * Two modes of operation:
      *
-     * @param {boolean} [isStatic=true] - If true, don't trigger resolvers.
-     * @yields {Array} [path, node] tuples.
+     * 1. **Generator mode** (no callback or boolean first arg): Returns a generator yielding
+     *    [path, node] tuples for all nodes in the tree. This is the
+     *    recommended approach.
+     *
+     * 2. **Legacy callback mode** (function first arg): Calls callback(node, kwargs) for each
+     *    node. Supports early exit (if callback returns truthy value),
+     *    _pathlist and _indexlist kwargs for path tracking.
+     *
+     * @param {Function|boolean} [callbackOrStatic=true] - If function, use callback mode.
+     *     If boolean or omitted, use generator mode with isStatic.
+     * @param {boolean} [isStatic=true] - If true, don't trigger resolvers during traversal.
+     *     Only used in callback mode (second argument).
+     * @param {Object} [kwargs={}] - Passed to callback. Special keys:
+     *     - _pathlist: array of labels from root (auto-updated by walk)
+     *     - _indexlist: array of indices from root (auto-updated by walk)
+     * @returns {Generator|*} Generator of [path, node] if generator mode.
+     *     If callback provided: value returned by callback if truthy, else null.
      *
      * @example
+     * // Generator mode (modern, recommended)
      * for (const [path, node] of bag.walk()) {
      *     console.log(`${path}: ${node.value}`);
      * }
+     *
+     * @example
+     * // Generator mode with isStatic=false
+     * for (const [path, node] of bag.walk(false)) {
+     *     console.log(`${path}: ${node.value}`);
+     * }
+     *
+     * @example
+     * // Legacy callback mode with path tracking
+     * bag.walk((node, kw) => {
+     *     console.log(kw._pathlist.join('.'));
+     * }, true, { _pathlist: [] });
      */
-    *walk(isStatic = true) {
+    walk(callbackOrStatic = true, isStatic = true, kwargs = {}) {
+        if (typeof callbackOrStatic === 'function') {
+            // Legacy callback mode
+            return this._walkCallback(callbackOrStatic, isStatic, kwargs);
+        }
+        // Generator mode - first arg is isStatic (boolean or undefined)
+        const staticMode = typeof callbackOrStatic === 'boolean' ? callbackOrStatic : true;
+        return this._walkGenerator(staticMode);
+    }
+
+    /**
+     * Internal generator walk helper.
+     *
+     * @param {boolean} isStatic - If true, don't trigger resolvers.
+     * @yields {Array} [path, node] tuples.
+     */
+    *_walkGenerator(isStatic) {
         yield* this._walkInner('', isStatic);
     }
 
     /**
-     * Internal recursive walk helper.
+     * Internal recursive walk helper for generator mode.
      *
      * @param {string} prefix - Current path prefix.
      * @param {boolean} isStatic - If true, don't trigger resolvers.
@@ -638,6 +1122,42 @@ export class Bag {
                 yield* value._walkInner(path, isStatic);
             }
         }
+    }
+
+    /**
+     * Internal callback walk helper.
+     *
+     * @param {Function} callback - Callback function(node, kwargs).
+     * @param {boolean} isStatic - If true, don't trigger resolvers.
+     * @param {Object} kwargs - Kwargs passed to callback.
+     * @returns {*} Value returned by callback if truthy, else null.
+     */
+    _walkCallback(callback, isStatic, kwargs) {
+        for (let idx = 0; idx < this._nodes.length; idx++) {
+            const node = this._nodes._list[idx];
+            const kw = { ...kwargs };
+
+            if ('_pathlist' in kwargs) {
+                kw._pathlist = [...kwargs._pathlist, node.label];
+            }
+            if ('_indexlist' in kwargs) {
+                kw._indexlist = [...kwargs._indexlist, idx];
+            }
+
+            const result = callback(node, kw);
+            if (result) {
+                return result;
+            }
+
+            const value = node.getValue(isStatic);
+            if (value instanceof Bag) {
+                const innerResult = value._walkCallback(callback, isStatic, kw);
+                if (innerResult) {
+                    return innerResult;
+                }
+            }
+        }
+        return null;
     }
 
     // -------------------------------------------------------------------------
