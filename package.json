@@ -14,7 +14,8 @@
     "NOTICE"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:coverage": "c8 --reporter=lcov --reporter=text node --test tests/*.test.js"
   },
   "keywords": [
     "bag",
@@ -35,5 +36,8 @@
   "dependencies": {
     "big.js": "^7.0.1",
     "genro-tytx": "^0.7.2"
+  },
+  "devDependencies": {
+    "c8": "^10.1.2"
   }
 }
