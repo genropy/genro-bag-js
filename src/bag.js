@@ -17,6 +17,7 @@ export class Bag {
         this._backref = false;
         this._parent = null;
         this._parentNode = null;
+        this._rootAttributes = null;
         // Subscriber dictionaries for events
         this._updSubscribers = {};
         this._insSubscribers = {};
@@ -69,6 +70,53 @@ export class Bag {
 
     get length() {
         return this._nodes.length;
+    }
+
+    /**
+     * Root Bag of the hierarchy.
+     *
+     * Traverses the parent chain to find the topmost Bag. If this Bag has no
+     * parent, returns itself.
+     *
+     * @returns {Bag} The root Bag.
+     */
+    get root() {
+        let curr = this;
+        while (curr.parent !== null) {
+            curr = curr.parent;
+        }
+        return curr;
+    }
+
+    /**
+     * Attributes of the node containing this Bag.
+     *
+     * Returns the attributes of the parent node that contains this Bag.
+     * Returns an empty object if this Bag has no parent node.
+     *
+     * @returns {Object} Attributes dictionary.
+     */
+    get attributes() {
+        if (this._parentNode !== null) {
+            return this._parentNode.getAttr();
+        }
+        return {};
+    }
+
+    /**
+     * Root-level attributes for this Bag hierarchy.
+     *
+     * These are special attributes stored at the hierarchy level,
+     * independent of any node attributes.
+     *
+     * @returns {Object|null} Root attributes or null.
+     */
+    get rootAttributes() {
+        return this._rootAttributes;
+    }
+
+    set rootAttributes(attrs) {
+        this._rootAttributes = attrs !== null ? { ...attrs } : null;
     }
 
     // -------------------------------------------------------------------------

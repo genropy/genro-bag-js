@@ -897,4 +897,79 @@ describe('Bag', () => {
             assert.strictEqual(bag1.isEqual(bag2), true);
         });
     });
+
+    describe('root property', () => {
+        it('should return itself for root bag', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            assert.strictEqual(bag.root, bag);
+        });
+
+        it('should return root for nested bag with backref', () => {
+            const root = new Bag();
+            root.setBackref();
+            root.setItem('level1.level2.value', 42);
+
+            const level1 = root.getItem('level1');
+            const level2 = root.getItem('level1.level2');
+
+            assert.strictEqual(level1.root, root);
+            assert.strictEqual(level2.root, root);
+        });
+
+        it('should return itself when no parent set', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.root, bag);
+        });
+    });
+
+    describe('attributes property', () => {
+        it('should return empty object for root bag', () => {
+            const bag = new Bag();
+            assert.deepStrictEqual(bag.attributes, {});
+        });
+
+        it('should return parent node attributes', () => {
+            const parent = new Bag();
+            parent.setBackref();
+            parent.setItem('child', new Bag(), { color: 'red', size: 10 });
+
+            const child = parent.getItem('child');
+            assert.deepStrictEqual(child.attributes, { color: 'red', size: 10 });
+        });
+
+        it('should return empty object when parentNode is null', () => {
+            const bag = new Bag();
+            bag._parent = new Bag(); // Set parent but not parentNode
+            assert.deepStrictEqual(bag.attributes, {});
+        });
+    });
+
+    describe('rootAttributes property', () => {
+        it('should be null by default', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.rootAttributes, null);
+        });
+
+        it('should set and get root attributes', () => {
+            const bag = new Bag();
+            bag.rootAttributes = { version: '1.0', encoding: 'utf-8' };
+            assert.deepStrictEqual(bag.rootAttributes, { version: '1.0', encoding: 'utf-8' });
+        });
+
+        it('should copy attributes on set', () => {
+            const bag = new Bag();
+            const attrs = { a: 1, b: 2 };
+            bag.rootAttributes = attrs;
+            attrs.c = 3; // Modify original
+            assert.deepStrictEqual(bag.rootAttributes, { a: 1, b: 2 }); // Should not have c
+        });
+
+        it('should allow setting to null', () => {
+            const bag = new Bag();
+            bag.rootAttributes = { key: 'value' };
+            bag.rootAttributes = null;
+            assert.strictEqual(bag.rootAttributes, null);
+        });
+    });
 });
