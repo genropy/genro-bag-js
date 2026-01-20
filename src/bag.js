@@ -1301,6 +1301,85 @@ export class Bag {
     }
 
     // -------------------------------------------------------------------------
+    // Construction and Filling Methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Copy nodes from another Bag.
+     *
+     * Clears current contents and copies all nodes from the source Bag.
+     * Nested Bags are deep copied.
+     *
+     * @param {Bag} other - Source Bag to copy from.
+     * @private
+     */
+    _fillFromBag(other) {
+        this.clear();
+        for (const node of other) {
+            // Deep copy the value if it's a Bag
+            let value = node.value;
+            if (value instanceof Bag) {
+                value = value.deepcopy();
+            }
+            this.setItem(node.label, value, { ...node.getAttr() });
+        }
+    }
+
+    /**
+     * Populate bag from a plain object (dictionary).
+     *
+     * Clears current contents and creates nodes from object properties.
+     * Nested objects are converted to nested Bags.
+     *
+     * @param {Object} data - Object where keys become labels and values become node values.
+     * @private
+     */
+    _fillFromDict(data) {
+        this.clear();
+        for (const [key, value] of Object.entries(data)) {
+            if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Bag)) {
+                this.setItem(key, new Bag().fillFrom(value));
+            } else {
+                this.setItem(key, value);
+            }
+        }
+    }
+
+    /**
+     * Fill this Bag from a source (another Bag or plain object).
+     *
+     * Clears current contents and populates from the source:
+     * - If source is null/undefined: no-op
+     * - If source is a Bag: copies all nodes (deep copy for nested Bags)
+     * - If source is a plain object: keys become labels, values become node values.
+     *   Nested objects are recursively converted to Bags.
+     *
+     * @param {Bag|Object|null} source - Source to fill from.
+     * @returns {Bag} This Bag (for chaining).
+     *
+     * @example
+     * const bag = new Bag();
+     * bag.fillFrom({ a: 1, b: { c: 2 } });
+     * // bag has 'a' = 1, 'b' = Bag with 'c' = 2
+     *
+     * const other = new Bag();
+     * other.setItem('x', 10);
+     * bag.fillFrom(other);
+     * // bag now has only 'x' = 10
+     */
+    fillFrom(source) {
+        if (source == null) {
+            return this;
+        }
+        if (source instanceof Bag) {
+            this._fillFromBag(source);
+        } else if (typeof source === 'object' && !Array.isArray(source)) {
+            this._fillFromDict(source);
+        }
+        return this;
+    }
+
+    // -------------------------------------------------------------------------
     // walk - Depth-first tree traversal
     // -------------------------------------------------------------------------
 
@@ -1886,6 +1965,96 @@ export class Bag {
     // -------------------------------------------------------------------------
     // String representation
     // -------------------------------------------------------------------------
+
+    /**
+     * Return ASCII tree representation of bag contents.
+     *
+     * Produces a visual tree structure showing all nodes, their values,
+     * and attributes. Handles nested Bags recursively and detects
+     * circular references.
+     *
+     * @param {boolean} [isStatic=true] - If false, triggers resolvers to get current values.
+     * @param {Map} [_visited=null] - Internal: tracks visited nodes for circular refs.
+     * @param {string} [_prefix=''] - Internal: indentation prefix for nested bags.
+     * @param {boolean} [_isLast=true] - Internal: whether this is the last sibling.
+     * @returns {string} ASCII tree representation.
+     *
+     * @example
+     * const bag = new Bag();
+     * bag.setItem('user.age', 30);
+     * bag.setItem('user.city', 'Rome');
+     * console.log(bag.toStringTree());
+     * // user
+     * // ├── age: 30
+     * // └── city: 'Rome'
+     */
+    toStringTree(isStatic = true, _visited = null, _prefix = '', _isLast = true) {
+        if (_visited === null) {
+            _visited = new Map();
+        }
+
+        const lines = [];
+        const nodes = [...this._nodes];
+
+        for (let idx = 0; idx < nodes.length; idx++) {
+            const node = nodes[idx];
+            const isLast = idx === nodes.length - 1;
+            const value = node.getValue(isStatic);
+
+            // Format attributes
+            const attrs = node.getAttr();
+            let attrStr = '';
+            const attrKeys = Object.keys(attrs);
+            if (attrKeys.length > 0) {
+                const attrParts = attrKeys.map(k => `${k}=${JSON.stringify(attrs[k])}`);
+                attrStr = ' [' + attrParts.join(', ') + ']';
+            }
+
+            // Tree characters
+            const branch = isLast ? '└── ' : '├── ';
+            const childPrefix = _prefix + (isLast ? '    ' : '│   ');
+
+            if (value instanceof Bag) {
+                const nodeId = node;  // Use node object as key
+                const backref = value.backref ? '(*)' : '';
+
+                if (_visited.has(nodeId)) {
+                    lines.push(`${_prefix}${branch}${node.label}${backref}${attrStr} → (circular ref)`);
+                } else {
+                    _visited.set(nodeId, node.label);
+                    lines.push(`${_prefix}${branch}${node.label}${backref}${attrStr}`);
+                    const inner = value.toStringTree(isStatic, _visited, childPrefix, isLast);
+                    if (inner) {
+                        lines.push(inner);
+                    }
+                }
+            } else {
+                // Format value representation
+                let valueStr;
+                if (value === null) {
+                    valueStr = 'null';
+                } else if (value === undefined) {
+                    valueStr = 'undefined';
+                } else if (value instanceof ArrayBuffer || value instanceof Uint8Array) {
+                    const decoder = new TextDecoder('utf-8', { fatal: false });
+                    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : value;
+                    valueStr = decoder.decode(bytes);
+                } else if (typeof value === 'string') {
+                    if (value.length > 50) {
+                        valueStr = JSON.stringify(value.slice(0, 47) + '...');
+                    } else {
+                        valueStr = JSON.stringify(value);
+                    }
+                } else {
+                    valueStr = String(value);
+                }
+
+                lines.push(`${_prefix}${branch}${node.label}: ${valueStr}${attrStr}`);
+            }
+        }
+
+        return lines.join('\n');
+    }
 
     toString() {
         const lines = [];

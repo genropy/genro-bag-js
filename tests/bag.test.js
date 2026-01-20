@@ -1377,4 +1377,292 @@ describe('Bag', () => {
             assert.strictEqual(bag.getItem('a'), null);
         });
     });
+
+    describe('fillFrom', () => {
+        it('should do nothing when source is null', () => {
+            const bag = new Bag();
+            bag.setItem('existing', 'value');
+
+            const result = bag.fillFrom(null);
+
+            assert.strictEqual(result, bag);
+            assert.strictEqual(bag.getItem('existing'), 'value');
+        });
+
+        it('should do nothing when source is undefined', () => {
+            const bag = new Bag();
+            bag.setItem('existing', 'value');
+
+            const result = bag.fillFrom(undefined);
+
+            assert.strictEqual(result, bag);
+            assert.strictEqual(bag.getItem('existing'), 'value');
+        });
+
+        it('should clear and fill from plain object', () => {
+            const bag = new Bag();
+            bag.setItem('old', 'data');
+
+            bag.fillFrom({ a: 1, b: 2 });
+
+            assert.strictEqual(bag.getItem('old'), null);  // Cleared
+            assert.strictEqual(bag.getItem('a'), 1);
+            assert.strictEqual(bag.getItem('b'), 2);
+        });
+
+        it('should convert nested objects to Bags', () => {
+            const bag = new Bag();
+            bag.fillFrom({
+                name: 'test',
+                config: {
+                    host: 'localhost',
+                    port: 5432
+                }
+            });
+
+            assert.strictEqual(bag.getItem('name'), 'test');
+            assert.ok(bag.getItem('config') instanceof Bag);
+            assert.strictEqual(bag.getItem('config.host'), 'localhost');
+            assert.strictEqual(bag.getItem('config.port'), 5432);
+        });
+
+        it('should convert deeply nested objects', () => {
+            const bag = new Bag();
+            bag.fillFrom({
+                level1: {
+                    level2: {
+                        level3: 'deep'
+                    }
+                }
+            });
+
+            assert.strictEqual(bag.getItem('level1.level2.level3'), 'deep');
+        });
+
+        it('should clear and fill from another Bag', () => {
+            const source = new Bag();
+            source.setItem('x', 10);
+            source.setItem('y', 20);
+
+            const bag = new Bag();
+            bag.setItem('old', 'data');
+            bag.fillFrom(source);
+
+            assert.strictEqual(bag.getItem('old'), null);  // Cleared
+            assert.strictEqual(bag.getItem('x'), 10);
+            assert.strictEqual(bag.getItem('y'), 20);
+        });
+
+        it('should deep copy nested Bags from source Bag', () => {
+            const source = new Bag();
+            const inner = new Bag();
+            inner.setItem('deep', 'value');
+            source.setItem('outer', inner);
+
+            const bag = new Bag();
+            bag.fillFrom(source);
+
+            // Modify source inner
+            inner.setItem('deep', 'changed');
+
+            // Target should be unaffected (deep copy)
+            assert.strictEqual(bag.getItem('outer.deep'), 'value');
+        });
+
+        it('should copy attributes from source Bag nodes', () => {
+            const source = new Bag();
+            source.setItem('item', 'value', { color: 'red', size: 10 });
+
+            const bag = new Bag();
+            bag.fillFrom(source);
+
+            const node = bag.getNode('item');
+            assert.strictEqual(node.getAttr().color, 'red');
+            assert.strictEqual(node.getAttr().size, 10);
+        });
+
+        it('should return this for chaining', () => {
+            const bag = new Bag();
+            const result = bag.fillFrom({ a: 1 });
+
+            assert.strictEqual(result, bag);
+        });
+
+        it('should be chainable with other methods', () => {
+            const bag = new Bag();
+            bag.fillFrom({ a: 1 }).setItem('b', 2);
+
+            assert.strictEqual(bag.getItem('a'), 1);
+            assert.strictEqual(bag.getItem('b'), 2);
+        });
+
+        it('should handle arrays as values (not convert to Bag)', () => {
+            const bag = new Bag();
+            bag.fillFrom({ items: [1, 2, 3] });
+
+            const items = bag.getItem('items');
+            assert.ok(Array.isArray(items));
+            assert.deepStrictEqual(items, [1, 2, 3]);
+        });
+
+        it('should preserve existing Bag values in source object', () => {
+            const innerBag = new Bag();
+            innerBag.setItem('key', 'value');
+
+            const bag = new Bag();
+            bag.fillFrom({ inner: innerBag });
+
+            assert.ok(bag.getItem('inner') instanceof Bag);
+            assert.strictEqual(bag.getItem('inner.key'), 'value');
+        });
+    });
+
+    describe('toStringTree', () => {
+        it('should return empty string for empty bag', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.toStringTree(), '');
+        });
+
+        it('should show simple values with tree structure', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('├── a: 1'));
+            assert.ok(result.includes('└── b: 2'));
+        });
+
+        it('should show single item with └──', () => {
+            const bag = new Bag();
+            bag.setItem('only', 'item');
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('└── only: "item"'));
+        });
+
+        it('should show string values with quotes', () => {
+            const bag = new Bag();
+            bag.setItem('name', 'hello');
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('"hello"'));
+        });
+
+        it('should truncate long strings', () => {
+            const bag = new Bag();
+            const longStr = 'a'.repeat(100);
+            bag.setItem('long', longStr);
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('...'));
+            assert.ok(!result.includes('a'.repeat(100)));
+        });
+
+        it('should show null values', () => {
+            const bag = new Bag();
+            bag.setItem('empty', null);
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('empty: null'));
+        });
+
+        it('should show nested Bags with indentation', () => {
+            const bag = new Bag();
+            bag.setItem('outer.inner', 'deep');
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('outer'));
+            assert.ok(result.includes('inner: "deep"'));
+            // Should have indentation for nested
+            assert.ok(result.includes('    '));
+        });
+
+        it('should show attributes in brackets', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { color: 'red' });
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('[color="red"]'));
+        });
+
+        it('should show multiple attributes', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { a: 1, b: 2 });
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('a=1'));
+            assert.ok(result.includes('b=2'));
+        });
+
+        it('should handle deeply nested structure', () => {
+            const bag = new Bag();
+            bag.setItem('l1.l2.l3', 'deep');
+
+            const result = bag.toStringTree();
+            const lines = result.split('\n');
+            assert.ok(lines.length >= 3);
+            assert.ok(result.includes('l1'));
+            assert.ok(result.includes('l2'));
+            assert.ok(result.includes('l3: "deep"'));
+        });
+
+        it('should handle mixed siblings with correct tree chars', () => {
+            const bag = new Bag();
+            bag.setItem('first', 1);
+            bag.setItem('middle', 2);
+            bag.setItem('last', 3);
+
+            const result = bag.toStringTree();
+            // First two should use ├──, last should use └──
+            const lines = result.split('\n');
+            assert.ok(lines[0].includes('├── first'));
+            assert.ok(lines[1].includes('├── middle'));
+            assert.ok(lines[2].includes('└── last'));
+        });
+
+        it('should handle nested bag with siblings', () => {
+            const bag = new Bag();
+            bag.setItem('config.host', 'localhost');
+            bag.setItem('config.port', 5432);
+            bag.setItem('name', 'app');
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('config'));
+            assert.ok(result.includes('host: "localhost"'));
+            assert.ok(result.includes('port: 5432'));
+            assert.ok(result.includes('name: "app"'));
+        });
+
+        it('should show backref marker for bags with backref', () => {
+            const bag = new Bag();
+            bag.setBackref();  // Enable backref mode
+            bag.setItem('child', new Bag());
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('(*)'));
+        });
+
+        it('should handle numeric values', () => {
+            const bag = new Bag();
+            bag.setItem('int', 42);
+            bag.setItem('float', 3.14);
+            bag.setItem('negative', -10);
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('int: 42'));
+            assert.ok(result.includes('float: 3.14'));
+            assert.ok(result.includes('negative: -10'));
+        });
+
+        it('should handle boolean values', () => {
+            const bag = new Bag();
+            bag.setItem('yes', true);
+            bag.setItem('no', false);
+
+            const result = bag.toStringTree();
+            assert.ok(result.includes('yes: true'));
+            assert.ok(result.includes('no: false'));
+        });
+    });
 });
