@@ -3,6 +3,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Bag } from '../src/index.js';
+import { BagResolver } from '../src/resolver.js';
 
 describe('Bag', () => {
     describe('setItem and getItem', () => {
@@ -1663,6 +1664,152 @@ describe('Bag', () => {
             const result = bag.toStringTree();
             assert.ok(result.includes('yes: true'));
             assert.ok(result.includes('no: false'));
+        });
+    });
+
+    // =========================================================================
+    // Phase 5: Remaining Methods (has, resolver methods)
+    // =========================================================================
+
+    describe('has() method', () => {
+        it('should return true for existing path', () => {
+            const bag = new Bag();
+            bag.setItem('a.b.c', 'value');
+
+            assert.strictEqual(bag.has('a'), true);
+            assert.strictEqual(bag.has('a.b'), true);
+            assert.strictEqual(bag.has('a.b.c'), true);
+        });
+
+        it('should return false for non-existing path', () => {
+            const bag = new Bag();
+            bag.setItem('a.b', 'value');
+
+            assert.strictEqual(bag.has('x'), false);
+            assert.strictEqual(bag.has('a.c'), false);
+            assert.strictEqual(bag.has('a.b.c'), false);
+        });
+
+        it('should return true for direct child by node', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+
+            const node = bag.node('item');
+            assert.strictEqual(bag.has(node), true);
+        });
+
+        it('should return false for node not in this bag', () => {
+            const bag1 = new Bag();
+            bag1.setItem('a', 1);
+
+            const bag2 = new Bag();
+            bag2.setItem('b', 2);
+
+            const node1 = bag1.node('a');
+            assert.strictEqual(bag2.has(node1), false);
+        });
+
+        it('should return false for invalid input', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+
+            assert.strictEqual(bag.has(123), false);
+            assert.strictEqual(bag.has(null), false);
+            assert.strictEqual(bag.has(undefined), false);
+        });
+
+        it('should work with empty bag', () => {
+            const bag = new Bag();
+
+            assert.strictEqual(bag.has('anything'), false);
+        });
+    });
+
+    describe('getResolver() method', () => {
+        it('should return null when node has no resolver', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+
+            assert.strictEqual(bag.getResolver('item'), null);
+        });
+
+        it('should return null for non-existing path', () => {
+            const bag = new Bag();
+
+            assert.strictEqual(bag.getResolver('missing'), null);
+        });
+
+        it('should return the resolver when set', () => {
+            const bag = new Bag();
+            const resolver = new BagResolver();
+            bag.setResolver('item', resolver);
+
+            assert.strictEqual(bag.getResolver('item'), resolver);
+        });
+    });
+
+    describe('setResolver() method', () => {
+        it('should set resolver on existing path', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'initial');
+
+            const resolver = new BagResolver();
+            bag.setResolver('item', resolver);
+
+            assert.strictEqual(bag.getResolver('item'), resolver);
+        });
+
+        it('should create path if not exists', () => {
+            const bag = new Bag();
+            const resolver = new BagResolver();
+
+            bag.setResolver('new.path', resolver);
+
+            assert.strictEqual(bag.has('new.path'), true);
+            assert.strictEqual(bag.getResolver('new.path'), resolver);
+        });
+
+        it('should set value to null when setting resolver', () => {
+            const bag = new Bag();
+            const resolver = new BagResolver();
+
+            bag.setResolver('item', resolver);
+
+            const node = bag.getNode('item');
+            assert.strictEqual(node.getValue(true), null);
+        });
+    });
+
+    describe('setCallbackItem() method', () => {
+        it('should create BagCbResolver with callback', () => {
+            const bag = new Bag();
+            const callback = () => 42;
+
+            bag.setCallbackItem('computed', callback);
+
+            const resolver = bag.getResolver('computed');
+            assert.ok(resolver !== null);
+            assert.strictEqual(resolver.constructor.name, 'BagCbResolver');
+        });
+
+        it('should pass options to resolver', () => {
+            const bag = new Bag();
+            const callback = () => 'value';
+
+            bag.setCallbackItem('item', callback, { cacheTime: 60 });
+
+            const resolver = bag.getResolver('item');
+            assert.strictEqual(resolver.cacheTime, 60);
+        });
+
+        it('should create nested path', () => {
+            const bag = new Bag();
+            const callback = () => 'deep';
+
+            bag.setCallbackItem('a.b.c', callback);
+
+            assert.strictEqual(bag.has('a.b.c'), true);
+            assert.ok(bag.getResolver('a.b.c') !== null);
         });
     });
 });

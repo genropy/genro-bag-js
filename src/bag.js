@@ -3,6 +3,7 @@
 import { BagNodeContainer } from './bag-node-container.js';
 import { toTytx as tytxEncode, fromTytx as tytxDecode } from 'genro-tytx';
 import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
+import { BagCbResolver } from './resolver.js';
 
 /**
  * Bag - Hierarchical data container with path-based access.
@@ -1171,6 +1172,77 @@ export class Bag {
      */
     isEqual(other) {
         return this._nodes.isEqual(other._nodes);
+    }
+
+    /**
+     * Check if a path or node exists in the Bag.
+     *
+     * Equivalent to Python's `__contains__` / `in` operator.
+     *
+     * @param {string|BagNode} what - Path to check, or a BagNode to check if it's in this Bag.
+     * @returns {boolean} True if the path/node exists, false otherwise.
+     *
+     * @example
+     * bag.setItem('a.b', 1);
+     * bag.has('a.b')   // true
+     * bag.has('a.c')   // false
+     */
+    has(what) {
+        if (typeof what === 'string') {
+            return this.getNode(what) !== null;
+        } else if (what && what.label !== undefined) {
+            // Assume it's a BagNode-like object
+            return [...this._nodes].includes(what);
+        }
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Resolver Methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Get the resolver at the given path.
+     *
+     * @param {string} path - Path to the node.
+     * @returns {*} The resolver, or null if path doesn't exist or has no resolver.
+     */
+    getResolver(path) {
+        const node = this.getNode(path);
+        return node ? node.resolver : null;
+    }
+
+    /**
+     * Set a resolver at the given path.
+     *
+     * Creates the node if it doesn't exist, with value=null.
+     *
+     * @param {string} path - Path to the node.
+     * @param {*} resolver - The resolver to set.
+     */
+    setResolver(path, resolver) {
+        let node = this.getNode(path);
+        if (!node) {
+            this.setItem(path, null);
+            node = this.getNode(path);
+        }
+        node.resolver = resolver;
+    }
+
+    /**
+     * Set a callback resolver at the given path.
+     *
+     * Shortcut for creating a BagCbResolver and setting it on a node.
+     *
+     * @param {string} path - Path to the node.
+     * @param {Function} callback - Callable that returns the value.
+     * @param {Object} [options={}] - Options passed to BagCbResolver constructor.
+     *     - cacheTime: Cache duration in ms (default 0, no cache).
+     *     - readOnly: If true, value not saved in node (default false).
+     */
+    setCallbackItem(path, callback, options = {}) {
+        const resolver = new BagCbResolver({ callback, ...options });
+        this.setResolver(path, resolver);
     }
 
     // -------------------------------------------------------------------------

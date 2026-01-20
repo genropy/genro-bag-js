@@ -175,6 +175,27 @@ export class BagNode {
         this._value = value;
     }
 
+    /**
+     * Get the resolver attached to this node.
+     *
+     * @returns {BagResolver|null} The resolver or null.
+     */
+    get resolver() {
+        return this._resolver;
+    }
+
+    /**
+     * Set the resolver for this node.
+     *
+     * @param {BagResolver|null} resolver - The resolver to attach.
+     */
+    set resolver(resolver) {
+        this._resolver = resolver;
+        if (resolver && resolver.setNode) {
+            resolver.setNode(this);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Attribute Methods
     // -------------------------------------------------------------------------
