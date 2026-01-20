@@ -1,6 +1,6 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-import { BagNodeContainer } from './BagNodeContainer.js';
+import { BagNodeContainer } from './bag-node-container.js';
 import { toTytx as tytxEncode, fromTytx as tytxDecode } from 'genro-tytx';
 
 /**
@@ -582,6 +582,16 @@ export class Bag {
      */
     items() {
         return this._nodes.items();
+    }
+
+    /**
+     * Check equality with another Bag.
+     *
+     * @param {Bag} other - Bag to compare with.
+     * @returns {boolean} True if both Bags have same nodes with same values and attributes.
+     */
+    isEqual(other) {
+        return this._nodes.isEqual(other._nodes);
     }
 
     // -------------------------------------------------------------------------

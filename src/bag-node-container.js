@@ -1,6 +1,6 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-import { BagNode } from './BagNode.js';
+import { BagNode } from './bag-node.js';
 
 /**
  * BagNodeContainer - Ordered container for BagNodes with positional insert.

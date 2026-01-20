@@ -2,7 +2,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { BagNode } from '../src/BagNode.js';
+import { BagNode } from '../src/bag-node.js';
 
 describe('BagNode', () => {
     describe('getValue with queryString', () => {

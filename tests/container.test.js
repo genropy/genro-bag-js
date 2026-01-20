@@ -2,7 +2,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { BagNodeContainer } from '../src/BagNodeContainer.js';
+import { BagNodeContainer } from '../src/bag-node-container.js';
 
 describe('BagNodeContainer', () => {
     describe('index with special syntax', () => {

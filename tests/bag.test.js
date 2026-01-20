@@ -113,6 +113,160 @@ describe('Bag', () => {
         });
     });
 
+    describe('#n index access', () => {
+        it('should get value by #n index', () => {
+            const bag = new Bag();
+            bag.setItem('a', 10);
+            bag.setItem('b', 20);
+            bag.setItem('c', 30);
+
+            assert.strictEqual(bag.getItem('#0'), 10);
+            assert.strictEqual(bag.getItem('#1'), 20);
+            assert.strictEqual(bag.getItem('#2'), 30);
+        });
+
+        it('should return default for out of range index', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+
+            assert.strictEqual(bag.getItem('#99'), null);
+            assert.strictEqual(bag.getItem('#99', 'default'), 'default');
+        });
+
+        it('should get node by #n index', () => {
+            const bag = new Bag();
+            bag.setItem('a', 10);
+            bag.setItem('b', 20);
+
+            const node = bag.getNode('#1');
+            assert.strictEqual(node.label, 'b');
+            assert.strictEqual(node.value, 20);
+        });
+
+        it('should find node by #attr=value syntax via container', () => {
+            const bag = new Bag();
+            bag.setItem('item1', 'val1', { id: '123' });
+            bag.setItem('item2', 'val2', { id: '456' });
+            bag.setItem('item3', 'val3', { id: '789' });
+
+            // #attr=value works at container level
+            const idx = bag._nodes.index('#id=456');
+            assert.strictEqual(idx, 1);
+            const node = bag._nodes.get(idx);
+            assert.strictEqual(node.label, 'item2');
+        });
+
+        it('should find node by #=value syntax via container', () => {
+            const bag = new Bag();
+            bag.setItem('a', 'alpha');
+            bag.setItem('b', 'beta');
+            bag.setItem('c', 'gamma');
+
+            // #=value works at container level
+            const idx = bag._nodes.index('#=beta');
+            assert.strictEqual(idx, 1);
+            const node = bag._nodes.get(idx);
+            assert.strictEqual(node.label, 'b');
+        });
+    });
+
+    describe('position parameter in setItem', () => {
+        it('should append at end by default', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'c']);
+        });
+
+        it('should append at end with > position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('last', 'X', null, '>');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'last']);
+        });
+
+        it('should prepend at beginning with < position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('first', 'X', null, '<');
+
+            assert.deepStrictEqual(bag.keys(), ['first', 'a', 'b']);
+        });
+
+        it('should insert at index with #n position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+            bag.setItem('mid', 'X', null, '#1');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'mid', 'b', 'c']);
+        });
+
+        it('should insert after label with >label position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+            bag.setItem('after_a', 'X', null, '>a');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'after_a', 'b', 'c']);
+        });
+
+        it('should insert before label with <label position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+            bag.setItem('before_c', 'X', null, '<c');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'before_c', 'c']);
+        });
+
+        it('should insert before index with <#n position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+            bag.setItem('new', 'X', null, '<#2');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'new', 'c']);
+        });
+
+        it('should insert after index with >#n position', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+            bag.setItem('new', 'X', null, '>#0');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'new', 'b', 'c']);
+        });
+
+        it('should append at end for missing label reference', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('new', 'X', null, '>missing');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'new']);
+        });
+
+        it('should append at end for unknown position syntax', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('new', 'X', null, 'unknown');
+
+            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'new']);
+        });
+    });
+
     describe('pop', () => {
         it('should remove and return value at simple path', () => {
             const bag = new Bag();
@@ -406,6 +560,23 @@ describe('Bag', () => {
             assert.strictEqual(events[1].label, 'b');
         });
 
+        it('should call update callback when node value changes', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+
+            const events = [];
+            bag.subscribe('test', {
+                update: (e) => events.push({ evt: e.evt, label: e.node.label, oldvalue: e.oldvalue })
+            });
+
+            bag.setItem('a', 2);
+
+            assert.strictEqual(events.length, 1);
+            assert.strictEqual(events[0].evt, 'upd_value');
+            assert.strictEqual(events[0].label, 'a');
+            assert.strictEqual(events[0].oldvalue, 1);
+        });
+
         it('should call delete callback when node is removed', () => {
             const bag = new Bag();
             bag.setItem('a', 1);
@@ -429,12 +600,14 @@ describe('Bag', () => {
                 any: (e) => events.push(e.evt)
             });
 
-            bag.setItem('a', 1);
-            bag.pop('a');
+            bag.setItem('a', 1);  // insert
+            bag.setItem('a', 2);  // update
+            bag.pop('a');         // delete
 
-            assert.strictEqual(events.length, 2);
+            assert.strictEqual(events.length, 3);
             assert.strictEqual(events[0], 'ins');
-            assert.strictEqual(events[1], 'del');
+            assert.strictEqual(events[1], 'upd_value');
+            assert.strictEqual(events[2], 'del');
         });
 
         it('should unsubscribe from events', () => {
@@ -450,6 +623,38 @@ describe('Bag', () => {
             bag.unsubscribe('test', { insert: true });
             bag.setItem('b', 2);
             assert.strictEqual(events.length, 1); // No new event
+        });
+
+        it('should unsubscribe update callback', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            const events = [];
+            bag.subscribe('test', {
+                update: (e) => events.push('upd')
+            });
+
+            bag.setItem('a', 2);
+            assert.strictEqual(events.length, 1);
+
+            bag.unsubscribe('test', { update: true });
+            bag.setItem('a', 3);
+            assert.strictEqual(events.length, 1); // No new event
+        });
+
+        it('should unsubscribe with any=true removes all callbacks', () => {
+            const bag = new Bag();
+            const events = [];
+            bag.subscribe('test', {
+                any: (e) => events.push(e.evt)
+            });
+
+            bag.setItem('a', 1);
+            assert.strictEqual(events.length, 1);
+
+            bag.unsubscribe('test', { any: true });
+            bag.setItem('a', 2);
+            bag.pop('a');
+            assert.strictEqual(events.length, 1); // No new events
         });
 
         it('should propagate events to parent', () => {
@@ -471,6 +676,19 @@ describe('Bag', () => {
             assert.strictEqual(events.length, 1);
             assert.deepStrictEqual(events[0].path, ['child']);
             assert.strictEqual(events[0].label, 'item');
+        });
+
+        it('should have multiple subscribers receive events independently', () => {
+            const bag = new Bag();
+            const events1 = [];
+            const events2 = [];
+            bag.subscribe('sub1', { insert: (e) => events1.push('ins') });
+            bag.subscribe('sub2', { insert: (e) => events2.push('ins') });
+
+            bag.setItem('a', 1);
+
+            assert.deepStrictEqual(events1, ['ins']);
+            assert.deepStrictEqual(events2, ['ins']);
         });
     });
 
@@ -597,6 +815,86 @@ describe('Bag', () => {
             // Second and third rows have numeric parent ref
             assert.strictEqual(rows[1][0], 0);
             assert.strictEqual(rows[2][0], 0);
+        });
+    });
+
+    describe('isEqual', () => {
+        it('should return true for equal bags', () => {
+            const bag1 = new Bag();
+            bag1.setItem('a', 1);
+            bag1.setItem('b', 2);
+
+            const bag2 = new Bag();
+            bag2.setItem('a', 1);
+            bag2.setItem('b', 2);
+
+            assert.strictEqual(bag1.isEqual(bag2), true);
+        });
+
+        it('should return false for different values', () => {
+            const bag1 = new Bag();
+            bag1.setItem('a', 1);
+
+            const bag2 = new Bag();
+            bag2.setItem('a', 2);
+
+            assert.strictEqual(bag1.isEqual(bag2), false);
+        });
+
+        it('should return false for different keys', () => {
+            const bag1 = new Bag();
+            bag1.setItem('a', 1);
+
+            const bag2 = new Bag();
+            bag2.setItem('b', 1);
+
+            assert.strictEqual(bag1.isEqual(bag2), false);
+        });
+
+        it('should return false for different lengths', () => {
+            const bag1 = new Bag();
+            bag1.setItem('a', 1);
+            bag1.setItem('b', 2);
+
+            const bag2 = new Bag();
+            bag2.setItem('a', 1);
+
+            assert.strictEqual(bag1.isEqual(bag2), false);
+        });
+
+        it('should compare attributes', () => {
+            const bag1 = new Bag();
+            bag1.setItem('a', 1, { color: 'red' });
+
+            const bag2 = new Bag();
+            bag2.setItem('a', 1, { color: 'red' });
+
+            const bag3 = new Bag();
+            bag3.setItem('a', 1, { color: 'blue' });
+
+            assert.strictEqual(bag1.isEqual(bag2), true);
+            assert.strictEqual(bag1.isEqual(bag3), false);
+        });
+
+        it('should compare nested bags recursively', () => {
+            const bag1 = new Bag();
+            bag1.setItem('parent.child', 'value');
+
+            const bag2 = new Bag();
+            bag2.setItem('parent.child', 'value');
+
+            const bag3 = new Bag();
+            bag3.setItem('parent.child', 'different');
+
+            assert.strictEqual(bag1.isEqual(bag2), true);
+            assert.strictEqual(bag1.isEqual(bag3), false);
+        });
+
+        it('should return true for empty bags', () => {
+            const bag1 = new Bag();
+            const bag2 = new Bag();
+
+            assert.strictEqual(bag1.isEqual(bag2), true);
         });
     });
 });

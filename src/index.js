@@ -1,5 +1,5 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-export { Bag, BagException } from './Bag.js';
-export { BagNode } from './BagNode.js';
-export { BagNodeContainer } from './BagNodeContainer.js';
+export { Bag, BagException } from './bag.js';
+export { BagNode } from './bag-node.js';
+export { BagNodeContainer } from './bag-node-container.js';
