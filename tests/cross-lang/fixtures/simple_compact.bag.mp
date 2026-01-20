@@ -1,0 +1,1 @@
+‚¤rows••À¤nameÀ¤test€•À¥countÀ*€•À¥priceÀ¨99.99::N€•À¦activeÀÃ€•À¥emptyÀ¤::NN€¥paths€

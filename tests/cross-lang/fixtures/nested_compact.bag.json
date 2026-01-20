@@ -1,0 +1,1 @@
+{"rows":[[null,"config",null,"::X",{}],[0,"host",null,"localhost",{}],[0,"port",null,5432,{}],[0,"enabled",null,true,{}],[null,"users",null,"::X",{}],[1,"admin",null,"::X",{}],[2,"name",null,"Admin",{}],[2,"email",null,"admin@example.com",{}],[1,"guest",null,"::X",{}],[3,"name",null,"Guest",{}]],"paths":{"0":"config","1":"users","2":"users.admin","3":"users.guest"}}

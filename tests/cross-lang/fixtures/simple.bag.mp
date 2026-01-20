@@ -1,0 +1,1 @@
+¤rows•• ¤nameÀ¤test€• ¥countÀ*€• ¥priceÀ¨99.99::N€• ¦activeÀÃ€• ¥emptyÀ¤::NN€

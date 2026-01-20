@@ -1,0 +1,1 @@
+¤rowsš• ¦configÀ£::X€•¦config¤hostÀ©localhost€•¦config¤portÀÍ8€•¦config§enabledÀÃ€• ¥usersÀ£::X€•¥users¥adminÀ£::X€•«users.admin¤nameÀ¥Admin€•«users.admin¥emailÀ±admin@example.com€•¥users¥guestÀ£::X€•«users.guest¤nameÀ¥Guest€

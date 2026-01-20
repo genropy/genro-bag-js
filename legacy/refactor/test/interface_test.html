@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Genro Interface Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .pass { color: green; }
+        .fail { color: red; }
+        .warn { color: orange; }
+        table { border-collapse: collapse; margin: 20px 0; }
+        td, th { border: 1px solid #ccc; padding: 5px 10px; text-align: left; }
+        th { background: #f0f0f0; }
+        .section { margin: 30px 0; }
+        h2 { border-bottom: 2px solid #333; }
+    </style>
+</head>
+<body>
+    <h1>Genro.js Interface Compatibility Test</h1>
+
+    <div class="section">
+        <h2>1. Carica Vecchio Genro (Legacy)</h2>
+        <p>Caricare prima il vecchio genro.js con Dojo per catturare l'interfaccia.</p>
+        <button onclick="captureLegacyInterface()">Cattura Interfaccia Legacy</button>
+        <pre id="legacyOutput"></pre>
+    </div>
+
+    <div class="section">
+        <h2>2. Test Nuovo Genro (Refactored)</h2>
+        <button onclick="testNewGenro()">Test Nuovo Genro</button>
+        <div id="testResults"></div>
+    </div>
+
+    <script type="module">
+        import { createGenro } from '../genro_js/index.js';
+
+        // Esponi per uso globale
+        window.createNewGenro = createGenro;
+    </script>
+
+    <script>
+        // Interfaccia legacy catturata (da compilare con vecchio genro)
+        const EXPECTED_INTERFACE = {
+            // Metodi che DEVONO esistere (core)
+            required_methods: [
+                'getData',
+                'setData',
+                'getDataNode',
+                'getDataAttr',
+                '_',
+                'publish',
+                'fireEvent',
+                'nodeById',
+                'domById',
+                'wdgById',
+                'getForm',
+                'formById',
+                'serverCall',
+                'callAfter',
+                'watch',
+                'unwatch',
+                'pathResolve',
+                'getSourceNode',
+                'getParentGenro'
+            ],
+
+            // Metodi deprecati (devono esistere ma con warning)
+            deprecated_methods: [
+                'getCounter',
+                'time36Id',
+                'compare',
+                'isEqual',
+                'safetry',
+                'makeUrl',
+                'gotoURL',
+                'gotoHome',
+                'pageReload',
+                'setInStorage',
+                'getFromStorage'
+            ],
+
+            // Nuovi namespace
+            namespaces: [
+                'tools',
+                'nav',
+                'storage'
+            ],
+
+            // Proprietà che DEVONO esistere
+            required_properties: [
+                'pageId',
+                'page_id',
+                'startArgs',
+                '_data',
+                '_dataroot',
+                'isMac',
+                'isChrome',
+                'isMobile',
+                'isDeveloper',
+                'mainGenroWindow'
+            ],
+
+            // Handler placeholder
+            handlers: [
+                'rpc',
+                'src',
+                'wdg',
+                'dom',
+                'dlg',
+                'dev',
+                'wsk',
+                'vld'
+            ]
+        };
+
+        function captureLegacyInterface() {
+            if (typeof genro === 'undefined') {
+                document.getElementById('legacyOutput').textContent =
+                    'ERROR: genro non definito. Carica prima il vecchio genro.js con Dojo.';
+                return;
+            }
+
+            const snapshot = {
+                methods: [],
+                properties: []
+            };
+
+            for (const key of Object.keys(genro)) {
+                const val = genro[key];
+                if (typeof val === 'function') {
+                    snapshot.methods.push(key);
+                } else {
+                    snapshot.properties.push(key);
+                }
+            }
+
+            // Aggiungi metodi dal prototype
+            const proto = Object.getPrototypeOf(genro);
+            for (const key of Object.getOwnPropertyNames(proto)) {
+                if (key !== 'constructor' && typeof proto[key] === 'function') {
+                    if (!snapshot.methods.includes(key)) {
+                        snapshot.methods.push(key);
+                    }
+                }
+            }
+
+            snapshot.methods.sort();
+            snapshot.properties.sort();
+
+            document.getElementById('legacyOutput').textContent =
+                JSON.stringify(snapshot, null, 2);
+
+            console.log('Legacy interface captured:', snapshot);
+        }
+
+        function testNewGenro() {
+            const resultsDiv = document.getElementById('testResults');
+            let html = '';
+            let passCount = 0;
+            let failCount = 0;
+            let warnCount = 0;
+
+            // Crea nuovo genro
+            const newGenro = window.createNewGenro({
+                page_id: 'test_page',
+                startArgs: { isDeveloper: true }
+            });
+
+            // Test metodi required
+            html += '<h3>Metodi Required</h3><table><tr><th>Metodo</th><th>Esiste</th><th>Tipo</th></tr>';
+            for (const method of EXPECTED_INTERFACE.required_methods) {
+                const exists = method in newGenro;
+                const type = typeof newGenro[method];
+                const isFunc = type === 'function';
+
+                if (exists && isFunc) {
+                    html += `<tr class="pass"><td>${method}</td><td>✓</td><td>${type}</td></tr>`;
+                    passCount++;
+                } else {
+                    html += `<tr class="fail"><td>${method}</td><td>${exists ? '✓' : '✗'}</td><td>${type}</td></tr>`;
+                    failCount++;
+                }
+            }
+            html += '</table>';
+
+            // Test metodi deprecated (devono esistere con getter)
+            html += '<h3>Metodi Deprecated (backward compat)</h3><table><tr><th>Metodo</th><th>Esiste</th><th>Note</th></tr>';
+            for (const method of EXPECTED_INTERFACE.deprecated_methods) {
+                const descriptor = Object.getOwnPropertyDescriptor(newGenro, method);
+                const hasGetter = descriptor && typeof descriptor.get === 'function';
+
+                if (hasGetter) {
+                    html += `<tr class="pass"><td>${method}</td><td>✓</td><td>deprecation getter</td></tr>`;
+                    passCount++;
+                } else {
+                    html += `<tr class="warn"><td>${method}</td><td>✗</td><td>missing deprecation</td></tr>`;
+                    warnCount++;
+                }
+            }
+            html += '</table>';
+
+            // Test namespace
+            html += '<h3>Namespace</h3><table><tr><th>Namespace</th><th>Esiste</th><th>Tipo</th></tr>';
+            for (const ns of EXPECTED_INTERFACE.namespaces) {
+                const exists = ns in newGenro;
+                const type = typeof newGenro[ns];
+
+                if (exists && type === 'object') {
+                    html += `<tr class="pass"><td>genro.${ns}</td><td>✓</td><td>${type}</td></tr>`;
+                    passCount++;
+                } else {
+                    html += `<tr class="fail"><td>genro.${ns}</td><td>${exists ? '✓' : '✗'}</td><td>${type}</td></tr>`;
+                    failCount++;
+                }
+            }
+            html += '</table>';
+
+            // Test proprietà
+            html += '<h3>Proprietà Required</h3><table><tr><th>Proprietà</th><th>Esiste</th></tr>';
+            for (const prop of EXPECTED_INTERFACE.required_properties) {
+                const exists = prop in newGenro;
+
+                if (exists) {
+                    html += `<tr class="pass"><td>${prop}</td><td>✓</td></tr>`;
+                    passCount++;
+                } else {
+                    html += `<tr class="fail"><td>${prop}</td><td>✗</td></tr>`;
+                    failCount++;
+                }
+            }
+            html += '</table>';
+
+            // Test handler placeholder
+            html += '<h3>Handler Placeholder</h3><table><tr><th>Handler</th><th>Esiste</th></tr>';
+            for (const handler of EXPECTED_INTERFACE.handlers) {
+                const exists = handler in newGenro;
+
+                if (exists) {
+                    html += `<tr class="pass"><td>genro.${handler}</td><td>✓ (null placeholder)</td></tr>`;
+                    passCount++;
+                } else {
+                    html += `<tr class="fail"><td>genro.${handler}</td><td>✗</td></tr>`;
+                    failCount++;
+                }
+            }
+            html += '</table>';
+
+            // Summary
+            html = `
+                <div style="padding: 10px; background: #f0f0f0; margin-bottom: 20px;">
+                    <strong>Risultati:</strong>
+                    <span class="pass">✓ ${passCount} pass</span> |
+                    <span class="fail">✗ ${failCount} fail</span> |
+                    <span class="warn">⚠ ${warnCount} warn</span>
+                </div>
+            ` + html;
+
+            // Test funzionali base
+            html += '<h3>Test Funzionali</h3><table><tr><th>Test</th><th>Risultato</th></tr>';
+
+            // Test tools.counter
+            try {
+                const c1 = newGenro.tools.counter();
+                const c2 = newGenro.tools.counter();
+                const ok = c2 === c1 + 1;
+                html += `<tr class="${ok ? 'pass' : 'fail'}"><td>tools.counter() incrementa</td><td>${ok ? '✓' : '✗'} (${c1} → ${c2})</td></tr>`;
+            } catch (e) {
+                html += `<tr class="fail"><td>tools.counter()</td><td>✗ ${e.message}</td></tr>`;
+            }
+
+            // Test tools.time36Id
+            try {
+                const id1 = newGenro.tools.time36Id();
+                const id2 = newGenro.tools.time36Id();
+                const ok = typeof id1 === 'string' && id1 !== id2;
+                html += `<tr class="${ok ? 'pass' : 'fail'}"><td>tools.time36Id() univoco</td><td>${ok ? '✓' : '✗'}</td></tr>`;
+            } catch (e) {
+                html += `<tr class="fail"><td>tools.time36Id()</td><td>✗ ${e.message}</td></tr>`;
+            }
+
+            // Test tools.compare
+            try {
+                const ok = newGenro.tools.compare('>', 5, 3) === true &&
+                           newGenro.tools.compare('<', 5, 3) === false;
+                html += `<tr class="${ok ? 'pass' : 'fail'}"><td>tools.compare()</td><td>${ok ? '✓' : '✗'}</td></tr>`;
+            } catch (e) {
+                html += `<tr class="fail"><td>tools.compare()</td><td>✗ ${e.message}</td></tr>`;
+            }
+
+            // Test nav.makeUrl
+            try {
+                const url = newGenro.nav.makeUrl('/test', {foo: 'bar'});
+                const ok = url.includes('/test') && url.includes('foo=bar');
+                html += `<tr class="${ok ? 'pass' : 'fail'}"><td>nav.makeUrl()</td><td>${ok ? '✓' : '✗'}</td></tr>`;
+            } catch (e) {
+                html += `<tr class="fail"><td>nav.makeUrl()</td><td>✗ ${e.message}</td></tr>`;
+            }
+
+            // Test storage
+            try {
+                newGenro.storage.set('session', 'test_key', 'test_value');
+                const val = newGenro.storage.get('session', 'test_key');
+                const ok = val === 'test_value';
+                newGenro.storage.remove('session', 'test_key');
+                html += `<tr class="${ok ? 'pass' : 'fail'}"><td>storage set/get</td><td>${ok ? '✓' : '✗'}</td></tr>`;
+            } catch (e) {
+                html += `<tr class="fail"><td>storage set/get</td><td>✗ ${e.message}</td></tr>`;
+            }
+
+            // Test EventBus
+            try {
+                let received = false;
+                newGenro.subscribe('test_topic', () => { received = true; });
+                newGenro.publish('test_topic');
+                html += `<tr class="${received ? 'pass' : 'fail'}"><td>publish/subscribe</td><td>${received ? '✓' : '✗'}</td></tr>`;
+            } catch (e) {
+                html += `<tr class="fail"><td>publish/subscribe</td><td>✗ ${e.message}</td></tr>`;
+            }
+
+            html += '</table>';
+
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

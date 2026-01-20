@@ -1,0 +1,1 @@
+{"rows":[[null,"item1",null,"value1",{"color":"red","size":10}],[null,"item2",null,"50.00::N",{"currency":"EUR"}],[null,"nested",null,"::X",{}],[0,"child",null,"deep",{"level":2}]],"paths":{"0":"nested"}}

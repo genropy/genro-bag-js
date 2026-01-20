@@ -1,0 +1,1 @@
+{"rows":[["","decimal_value",null,"123.456::N",{}],["","date_value",null,"2025-06-15::D",{}],["","datetime_value",null,"2025-06-15T14:30:45.000Z::DHZ",{}],["","time_value",null,"10:30:00.000::H",{}],["","integer",null,999,{}],["","float_val",null,3.14159,{}],["","boolean",null,false,{}],["","null_val",null,"::NN",{}],["","string",null,"Hello, World!",{}]]}

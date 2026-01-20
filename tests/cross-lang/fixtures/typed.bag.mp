@@ -1,0 +1,1 @@
+¤rows™• ­decimal_valueÀª123.456::N€• ªdate_valueÀ­2025-06-15::D€• ®datetime_valueÀ½2025-06-15T14:30:45.000Z::DHZ€• ªtime_valueÀ¯10:30:00.000::H€• §integerÀÍç€• ©float_valÀË@	!ùğ†n€• §booleanÀÂ€• ¨null_valÀ¤::NN€• ¦stringÀ­Hello, World!€

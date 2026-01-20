@@ -1,0 +1,1 @@
+{"rows":[["","config",null,"::X",{}],["config","host",null,"localhost",{}],["config","port",null,5432,{}],["config","enabled",null,true,{}],["","users",null,"::X",{}],["users","admin",null,"::X",{}],["users.admin","name",null,"Admin",{}],["users.admin","email",null,"admin@example.com",{}],["users","guest",null,"::X",{}],["users.guest","name",null,"Guest",{}]]}

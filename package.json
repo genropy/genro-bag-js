@@ -1,0 +1,39 @@
+{
+  "name": "genro-bag-js",
+  "version": "0.1.0",
+  "description": "JavaScript port of genro-bag - hierarchical data container",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "bag",
+    "hierarchical",
+    "xml",
+    "builder",
+    "genro"
+  ],
+  "author": "Genropy Team",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/softwellsrl/genro-bag-js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "big.js": "^7.0.1",
+    "genro-tytx": "^0.7.2"
+  }
+}

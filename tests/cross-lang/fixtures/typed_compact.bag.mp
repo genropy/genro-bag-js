@@ -1,0 +1,1 @@
+‚¤rows™•À­decimal_valueÀª123.456::N€•Àªdate_valueÀ­2025-06-15::D€•À®datetime_valueÀ½2025-06-15T14:30:45.000Z::DHZ€•Àªtime_valueÀ¯10:30:00.000::H€•À§integerÀÍç€•À©float_valÀË@	!ùğ†n€•À§booleanÀÂ€•À¨null_valÀ¤::NN€•À¦stringÀ­Hello, World!€¥paths€
