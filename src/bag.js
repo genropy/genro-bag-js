@@ -2,6 +2,7 @@
 
 import { BagNodeContainer } from './bag-node-container.js';
 import { toTytx as tytxEncode, fromTytx as tytxDecode } from 'genro-tytx';
+import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
 
 /**
  * Bag - Hierarchical data container with path-based access.
@@ -188,11 +189,16 @@ export class Bag {
         if (label === '#parent') {
             return this.parent;
         }
+        // Parse queryString from label
+        let queryString = null;
+        if (label.includes('?')) {
+            [label, queryString] = label.split('?', 2);
+        }
         const node = this._nodes.get(label);
         if (!node) {
             return defaultValue;
         }
-        return node.getValue(isStatic);
+        return node.getValue(isStatic, queryString);
     }
 
     // -------------------------------------------------------------------------
@@ -765,6 +771,336 @@ export class Bag {
         }
 
         return bag;
+    }
+
+    // -------------------------------------------------------------------------
+    // XML Serialization
+    // -------------------------------------------------------------------------
+
+    /**
+     * Serialize Bag to XML format.
+     *
+     * All values are converted to strings without type information.
+     * For type-preserving serialization, use toTytx() instead.
+     *
+     * @param {Object} [options={}] - Serialization options.
+     * @param {boolean} [options.pretty=false] - If true, format with indentation.
+     * @param {string} [options.encoding='UTF-8'] - XML encoding.
+     * @param {boolean|string} [options.docHeader=null] - XML declaration.
+     * @param {string[]} [options.selfClosedTags=null] - Tags to self-close when empty.
+     * @returns {string} XML string.
+     */
+    toXml(options = {}) {
+        const { pretty = false, encoding = 'UTF-8', docHeader = null, selfClosedTags = null } = options;
+
+        let content = this._bagToXml(selfClosedTags);
+
+        if (pretty) {
+            content = this._prettifyXml(content);
+        }
+
+        if (docHeader === true) {
+            content = `<?xml version='1.0' encoding='${encoding}'?>\n${content}`;
+        } else if (typeof docHeader === 'string') {
+            content = `${docHeader}\n${content}`;
+        }
+
+        return content;
+    }
+
+    /**
+     * Convert Bag to XML string (internal).
+     * @private
+     */
+    _bagToXml(selfClosedTags = null) {
+        const parts = [];
+        for (const node of this._nodes) {
+            parts.push(this._nodeToXml(node, selfClosedTags));
+        }
+        return parts.join('');
+    }
+
+    /**
+     * Convert a BagNode to XML string (internal).
+     * @private
+     */
+    _nodeToXml(node, selfClosedTags = null) {
+        // Use xml_tag, tag, or label
+        const xmlTag = node.xmlTag || node.tag || node.label;
+        const tag = this._sanitizeTag(xmlTag);
+
+        // Build attributes string
+        const attrsParts = [];
+        if (node.attr) {
+            for (const [k, v] of Object.entries(node.attr)) {
+                if (v !== null && v !== false && v !== undefined) {
+                    attrsParts.push(`${k}="${this._escapeAttr(String(v))}"`);
+                }
+            }
+        }
+        const attrsStr = attrsParts.length ? ' ' + attrsParts.join(' ') : '';
+
+        // Handle value
+        const value = node.getValue(true);  // static=true
+
+        // Check if value is a Bag
+        if (value && typeof value._bagToXml === 'function') {
+            const inner = value._bagToXml(selfClosedTags);
+            if (inner) {
+                return `<${tag}${attrsStr}>${inner}</${tag}>`;
+            }
+            // Empty Bag
+            if (selfClosedTags === null || selfClosedTags.includes(tag)) {
+                return `<${tag}${attrsStr}/>`;
+            }
+            return `<${tag}${attrsStr}></${tag}>`;
+        }
+
+        // Scalar value
+        if (value === null || value === undefined || value === '') {
+            if (selfClosedTags === null || selfClosedTags.includes(tag)) {
+                return `<${tag}${attrsStr}/>`;
+            }
+            return `<${tag}${attrsStr}></${tag}>`;
+        }
+
+        const text = this._escapeXml(String(value));
+        return `<${tag}${attrsStr}>${text}</${tag}>`;
+    }
+
+    /**
+     * Sanitize tag name for XML.
+     * @private
+     */
+    _sanitizeTag(tag) {
+        if (!tag) return '_none_';
+        // Replace invalid characters with underscore
+        return tag.replace(/[^a-zA-Z0-9_\-.:]/g, '_');
+    }
+
+    /**
+     * Escape XML text content.
+     * @private
+     */
+    _escapeXml(str) {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    /**
+     * Escape XML attribute value.
+     * @private
+     */
+    _escapeAttr(str) {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    /**
+     * Pretty-print XML with indentation.
+     * @private
+     */
+    _prettifyXml(xml) {
+        let formatted = '';
+        let indent = '';
+        const tab = '  ';
+
+        xml.split(/>\s*</).forEach((node, index) => {
+            if (index > 0) {
+                if (node.match(/^\/\w/)) {
+                    // Closing tag
+                    indent = indent.substring(tab.length);
+                }
+                formatted += '\n' + indent;
+            }
+            formatted += (index > 0 ? '<' : '') + node + (index < xml.split(/>\s*</).length - 1 ? '>' : '');
+            if (node.match(/^<?\w[^>]*[^/]$/) && !node.startsWith('/')) {
+                // Opening tag (not self-closing)
+                indent += tab;
+            }
+        });
+        return formatted;
+    }
+
+    /**
+     * Deserialize Bag from XML format.
+     *
+     * @param {string} source - XML string to parse.
+     * @returns {Bag} Reconstructed Bag hierarchy.
+     */
+    static fromXml(source) {
+        // Use DOMParser (browser) or @xmldom/xmldom (Node.js)
+        let doc;
+        if (typeof DOMParser !== 'undefined') {
+            const parser = new DOMParser();
+            doc = parser.parseFromString(source, 'application/xml');
+            // Check for parse errors (browser-specific)
+            const parseError = doc.querySelector('parsererror');
+            if (parseError) {
+                throw new Error(`XML parse error: ${parseError.textContent}`);
+            }
+        } else {
+            // Node.js environment - use @xmldom/xmldom
+            const parser = new XmlDOMParser();
+            doc = parser.parseFromString(source, 'application/xml');
+        }
+
+        return Bag._xmlElementToBag(doc.documentElement);
+    }
+
+    /**
+     * Convert XML element to Bag (recursive).
+     * @private
+     */
+    static _xmlElementToBag(element) {
+        const bag = new Bag();
+
+        // Use childNodes and filter for element nodes (nodeType === 1)
+        // This works both in browser and @xmldom/xmldom
+        const childElements = Array.from(element.childNodes).filter(n => n.nodeType === 1);
+
+        for (const child of childElements) {
+            const label = child.tagName;
+            const attr = {};
+
+            // Collect attributes
+            for (let i = 0; i < child.attributes.length; i++) {
+                const attrNode = child.attributes[i];
+                attr[attrNode.name] = attrNode.value;
+            }
+
+            // Check if has child elements (nested Bag)
+            const childChildElements = Array.from(child.childNodes).filter(n => n.nodeType === 1);
+            if (childChildElements.length > 0) {
+                const childBag = Bag._xmlElementToBag(child);
+                bag.setItem(label, childBag, Object.keys(attr).length > 0 ? attr : null);
+            } else {
+                // Text content
+                const value = child.textContent || '';
+                bag.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
+            }
+        }
+
+        return bag;
+    }
+
+    // -------------------------------------------------------------------------
+    // JSON Serialization
+    // -------------------------------------------------------------------------
+
+    /**
+     * Serialize Bag to JSON string.
+     *
+     * Each node becomes {"label": ..., "value": ..., "attr": {...}}.
+     * Nested Bags have value as a list of child nodes.
+     *
+     * @param {boolean} [typed=true] - If true, encode types for date/datetime/Decimal (TYTX).
+     * @returns {string} JSON string representation.
+     */
+    toJson(typed = true) {
+        const result = [];
+        for (const node of this._nodes) {
+            result.push(this._nodeToJsonDict(node, typed));
+        }
+
+        if (typed) {
+            return tytxEncode(result);
+        }
+        return JSON.stringify(result);
+    }
+
+    /**
+     * Convert a BagNode to JSON-serializable dict (internal).
+     * @private
+     */
+    _nodeToJsonDict(node, typed) {
+        let value = node.getValue(true);  // static=true
+
+        // Check if value is a Bag
+        if (value && typeof value._nodeToJsonDict === 'function') {
+            const childResult = [];
+            for (const childNode of value._nodes) {
+                childResult.push(value._nodeToJsonDict(childNode, typed));
+            }
+            value = childResult;
+        }
+
+        return {
+            label: node.label,
+            value: value,
+            attr: node.attr && Object.keys(node.attr).length > 0 ? { ...node.attr } : {}
+        };
+    }
+
+    /**
+     * Deserialize JSON to Bag.
+     *
+     * Accepts JSON string, dict, or list. Recursively converts nested
+     * structures to Bag hierarchy.
+     *
+     * @param {string|Object|Array} source - JSON string, dict or list to parse.
+     * @returns {Bag} Deserialized Bag.
+     */
+    static fromJson(source) {
+        if (typeof source === 'string') {
+            source = tytxDecode(source);
+        }
+
+        if (!Array.isArray(source) && typeof source !== 'object') {
+            source = { value: source };
+        }
+
+        return Bag._fromJsonRecursive(source);
+    }
+
+    /**
+     * Recursively convert JSON data to Bag (internal).
+     * @private
+     */
+    static _fromJsonRecursive(data) {
+        if (Array.isArray(data)) {
+            if (data.length === 0) {
+                return new Bag();
+            }
+
+            // Check if list items have 'label' key (Bag node format)
+            if (typeof data[0] === 'object' && data[0] !== null && 'label' in data[0]) {
+                const result = new Bag();
+                for (const item of data) {
+                    const label = item.label;
+                    const value = Bag._fromJsonRecursive(item.value);
+                    const attr = item.attr || {};
+                    result.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
+                }
+                return result;
+            }
+
+            // Generic list -> Bag with r_N keys
+            const result = new Bag();
+            for (let n = 0; n < data.length; n++) {
+                result.setItem(`r_${n}`, Bag._fromJsonRecursive(data[n]));
+            }
+            return result;
+        }
+
+        if (typeof data === 'object' && data !== null) {
+            if (Object.keys(data).length === 0) {
+                return new Bag();
+            }
+            const result = new Bag();
+            for (const [k, v] of Object.entries(data)) {
+                result.setItem(k, Bag._fromJsonRecursive(v));
+            }
+            return result;
+        }
+
+        // Scalar value
+        return data;
     }
 
     // -------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
+import { fromTytx } from 'genro-tytx';
+
 /**
  * BagNode - individual node in a Bag hierarchy.
  *
@@ -70,18 +72,33 @@ export class BagNode {
      * @param {string} [queryString=null] - Query string from path suffix (after '?').
      *   - null: return node value
      *   - 'attr': return single attribute value
-     *   - 'attr1&attr2': return array of attribute values
+     *   - 'attr1&attr2': return tuple of attribute values
+     *   - 'key=val::T&key2=val2::T': kwargs for resolver (parsed via tytx ::QS)
+     * @param {Object} [kwargs={}] - Additional kwargs passed to resolver.
      * @returns {*} The node's value or attribute(s).
      */
-    getValue(isStatic = false, queryString = null) {
+    getValue(isStatic = false, queryString = null, kwargs = {}) {
         if (queryString !== null) {
-            const attrs = queryString.split('&');
-            if (attrs.length === 1) {
-                return this._attr[attrs[0]];
+            // Use tytx ::QS to parse queryString (like Python)
+            const parsedQs = fromTytx(`${queryString}::QS`);
+
+            if (Array.isArray(parsedQs)) {
+                // Attributes: ?color or ?color&size
+                const attrs = parsedQs.map(k => this._attr[k]);
+                return attrs.length === 1 ? attrs[0] : attrs;
+            } else {
+                // Dict → kwargs for resolver: ?x=1&y=2 → {x: 1, y: 2}
+                if (!this._resolver) {
+                    throw new Error('Cannot use kwargs syntax without resolver');
+                }
+                kwargs = { ...kwargs, ...parsedQs };
             }
-            return attrs.map(a => this._attr[a]);
         }
-        // TODO: resolver support
+
+        // Resolver support
+        if (this._resolver !== null) {
+            return this._resolver.resolve({ static: isStatic, ...kwargs });
+        }
         return this._value;
     }
 

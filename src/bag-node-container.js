@@ -130,30 +130,63 @@ export class BagNodeContainer {
     /**
      * Set or create a BagNode with optional position.
      *
-     * @param {string} label - The node label.
-     * @param {*} value - The value to set.
+     * Supports ?attr syntax to set attributes instead of value:
+     *   - 'label?myattr' → sets attribute 'myattr' to value
+     *   - 'label?x&y&z' → sets attributes from tuple (value must be array with matching length)
+     *
+     * @param {string} label - The node label. Can contain ?attr suffix.
+     * @param {*} value - The value to set. With ?attr syntax, becomes the attribute value.
      * @param {string|number|null} [nodePosition='>'] - Position specification.
      * @param {Object} [attr=null] - Optional attributes.
      * @param {Object} [parentBag=null] - Parent Bag reference.
      * @returns {BagNode} The created or updated BagNode.
      */
     set(label, value, nodePosition = '>', attr = null, parentBag = null) {
+        // Parse query string from label (like Python)
+        let queryString = null;
+        if (label.includes('?')) {
+            [label, queryString] = label.split('?', 2);
+        }
+
         // Validate label
         if (label === null || label === undefined || label.startsWith('#')) {
             throw new Error('Cannot create new node with #n syntax');
         }
 
+        // Handle query string: convert value to attributes
+        if (queryString) {
+            const qs = queryString.split('&');
+            if (qs.length === 1) {
+                attr = { [qs[0]]: value };
+            } else {
+                if (!Array.isArray(value) || value.length !== qs.length) {
+                    throw new Error('Wrong attributes assignment');
+                }
+                attr = {};
+                for (let i = 0; i < qs.length; i++) {
+                    attr[qs[i]] = value[i];
+                }
+            }
+            value = null;
+        }
+
         let node = this._dict[label];
 
         if (node) {
-            // Existing node - update value
-            node.setValue(value);
-            if (attr) {
+            // Existing node
+            if (queryString) {
+                // Only set_attr, don't touch value
                 node.setAttr(attr);
+            } else {
+                // Update value
+                node.setValue(value);
+                if (attr) {
+                    node.setAttr(attr);
+                }
             }
         } else {
             // New node
-            node = new BagNode(parentBag, label, value, attr);
+            node = new BagNode(parentBag, label, queryString ? null : value, attr);
             const idx = this._parsePosition(nodePosition);
             this._dict[label] = node;
             this._list.splice(idx, 0, node);

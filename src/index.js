@@ -3,3 +3,4 @@
 export { Bag, BagException } from './bag.js';
 export { BagNode } from './bag-node.js';
 export { BagNodeContainer } from './bag-node-container.js';
+export { BagResolver, BagCbResolver } from './resolver.js';
