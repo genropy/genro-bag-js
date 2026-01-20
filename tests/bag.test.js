@@ -1137,4 +1137,244 @@ describe('Bag', () => {
             assert.strictEqual(inherited.shared, 'child'); // Child overrides parent
         });
     });
+
+    // =========================================================================
+    // Phase 3: Structure Manipulation Methods
+    // =========================================================================
+
+    describe('move() method', () => {
+        it('should move single element forward', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+
+            bag.move(0, 2);  // move 'a' to position 2
+
+            assert.deepStrictEqual(bag.query('#k'), ['b', 'c', 'a']);
+        });
+
+        it('should move single element backward', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+
+            bag.move(2, 0);  // move 'c' to position 0
+
+            assert.deepStrictEqual(bag.query('#k'), ['c', 'a', 'b']);
+        });
+
+        it('should move multiple elements', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+            bag.setItem('d', 4);
+
+            bag.move([0, 3], 2);  // move 'a' and 'd' to position 2
+
+            assert.deepStrictEqual(bag.query('#k'), ['b', 'c', 'a', 'd']);
+        });
+    });
+
+    describe('asDict() method', () => {
+        it('should convert to plain object', () => {
+            const bag = new Bag();
+            bag.setItem('name', 'Alice');
+            bag.setItem('age', 30);
+
+            const obj = bag.asDict();
+
+            assert.deepStrictEqual(obj, { name: 'Alice', age: 30 });
+        });
+
+        it('should convert keys to lowercase when lower=true', () => {
+            const bag = new Bag();
+            bag.setItem('Name', 'Alice');
+            bag.setItem('AGE', 30);
+
+            const obj = bag.asDict(false, true);
+
+            assert.deepStrictEqual(obj, { name: 'Alice', age: 30 });
+        });
+
+        it('should return empty object for empty bag', () => {
+            const bag = new Bag();
+            assert.deepStrictEqual(bag.asDict(), {});
+        });
+
+        it('should only convert first level', () => {
+            const bag = new Bag();
+            bag.setItem('outer.inner', 'nested');
+
+            const obj = bag.asDict();
+
+            // 'outer' is a Bag, not converted recursively
+            assert.ok(obj.outer instanceof Bag);
+        });
+    });
+
+    describe('setdefault() method', () => {
+        it('should return existing value if path exists', () => {
+            const bag = new Bag();
+            bag.setItem('existing', 'value');
+
+            const result = bag.setdefault('existing', 'default');
+
+            assert.strictEqual(result, 'value');
+            assert.strictEqual(bag.getItem('existing'), 'value');
+        });
+
+        it('should set and return default if path does not exist', () => {
+            const bag = new Bag();
+
+            const result = bag.setdefault('missing', 'default');
+
+            assert.strictEqual(result, 'default');
+            assert.strictEqual(bag.getItem('missing'), 'default');
+        });
+
+        it('should set default to null if not provided', () => {
+            const bag = new Bag();
+
+            const result = bag.setdefault('missing');
+
+            assert.strictEqual(result, null);
+            assert.strictEqual(bag.getItem('missing'), null);
+        });
+
+        it('should work with nested paths', () => {
+            const bag = new Bag();
+
+            const result = bag.setdefault('a.b.c', 'deep');
+
+            assert.strictEqual(result, 'deep');
+            assert.strictEqual(bag.getItem('a.b.c'), 'deep');
+        });
+    });
+
+    describe('deepcopy() method', () => {
+        it('should create independent copy', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+
+            const copy = bag.deepcopy();
+
+            copy.setItem('a', 100);
+            assert.strictEqual(bag.getItem('a'), 1);  // Original unchanged
+            assert.strictEqual(copy.getItem('a'), 100);
+        });
+
+        it('should deep copy nested Bags', () => {
+            const bag = new Bag();
+            bag.setItem('outer.inner', 'value');
+
+            const copy = bag.deepcopy();
+
+            copy.setItem('outer.inner', 'changed');
+            assert.strictEqual(bag.getItem('outer.inner'), 'value');  // Original unchanged
+            assert.strictEqual(copy.getItem('outer.inner'), 'changed');
+        });
+
+        it('should copy attributes', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { color: 'red', size: 10 });
+
+            const copy = bag.deepcopy();
+
+            assert.strictEqual(copy.getAttr('item', 'color'), 'red');
+            assert.strictEqual(copy.getAttr('item', 'size'), 10);
+
+            // Modify copy attributes
+            copy.setAttr('item', { color: 'blue' });
+            assert.strictEqual(bag.getAttr('item', 'color'), 'red');  // Original unchanged
+        });
+
+        it('should copy empty bag', () => {
+            const bag = new Bag();
+            const copy = bag.deepcopy();
+
+            assert.strictEqual(copy.length, 0);
+        });
+    });
+
+    describe('update() method', () => {
+        it('should update from plain object', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+
+            bag.update({ a: 10, c: 3 });
+
+            assert.strictEqual(bag.getItem('a'), 10);  // Updated
+            assert.strictEqual(bag.getItem('b'), 2);   // Unchanged
+            assert.strictEqual(bag.getItem('c'), 3);   // Added
+        });
+
+        it('should update from another Bag', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+
+            const other = new Bag();
+            other.setItem('a', 100, { attr: 'value' });
+            other.setItem('b', 200);
+
+            bag.update(other);
+
+            assert.strictEqual(bag.getItem('a'), 100);
+            assert.strictEqual(bag.getAttr('a', 'attr'), 'value');
+            assert.strictEqual(bag.getItem('b'), 200);
+        });
+
+        it('should merge attributes', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { existing: 'attr' });
+
+            const other = new Bag();
+            other.setItem('item', 'newvalue', { new: 'attr' });
+
+            bag.update(other);
+
+            assert.strictEqual(bag.getAttr('item', 'existing'), 'attr');
+            assert.strictEqual(bag.getAttr('item', 'new'), 'attr');
+        });
+
+        it('should recursively update nested Bags', () => {
+            const bag = new Bag();
+            bag.setItem('outer.a', 1);
+            bag.setItem('outer.b', 2);
+
+            const other = new Bag();
+            other.setItem('outer.a', 100);
+            other.setItem('outer.c', 300);
+
+            bag.update(other);
+
+            assert.strictEqual(bag.getItem('outer.a'), 100);  // Updated
+            assert.strictEqual(bag.getItem('outer.b'), 2);    // Unchanged
+            assert.strictEqual(bag.getItem('outer.c'), 300);  // Added
+        });
+
+        it('should respect ignoreNone option', () => {
+            const bag = new Bag();
+            bag.setItem('a', 'original');
+            bag.setItem('b', 'also original');
+
+            bag.update({ a: null, b: 'changed' }, true);
+
+            assert.strictEqual(bag.getItem('a'), 'original');  // Not overwritten with null
+            assert.strictEqual(bag.getItem('b'), 'changed');
+        });
+
+        it('should overwrite with null when ignoreNone=false', () => {
+            const bag = new Bag();
+            bag.setItem('a', 'original');
+
+            bag.update({ a: null }, false);
+
+            assert.strictEqual(bag.getItem('a'), null);
+        });
+    });
 });

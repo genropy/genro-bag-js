@@ -1174,6 +1174,133 @@ export class Bag {
     }
 
     // -------------------------------------------------------------------------
+    // Structure Manipulation Methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Move element(s) to a new position.
+     *
+     * @param {number|number[]} what - Index or list of indices to move.
+     * @param {number} position - Target index position.
+     * @param {boolean} [trigger=true] - If true, fire del/ins events.
+     *
+     * @example
+     * bag.move(0, 2)      // move first element to position 2
+     * bag.move([0, 2], 1) // move indices 0 and 2 to position 1
+     */
+    move(what, position, trigger = true) {
+        this._nodes.move(what, position, trigger);
+    }
+
+    /**
+     * Convert Bag to plain object (first level only).
+     *
+     * @param {boolean} [ascii=false] - If true, convert keys to ASCII.
+     * @param {boolean} [lower=false] - If true, convert keys to lowercase.
+     * @returns {Object} Plain JavaScript object with key-value pairs.
+     */
+    asDict(ascii = false, lower = false) {
+        const result = {};
+        for (const el of this._nodes) {
+            let key = el.label;
+            if (ascii) {
+                key = String(key);
+            }
+            if (lower) {
+                key = key.toLowerCase();
+            }
+            result[key] = el.value;
+        }
+        return result;
+    }
+
+    /**
+     * Return value at path, setting it to default if not present.
+     *
+     * @param {string} path - Path to the value.
+     * @param {*} [defaultVal=null] - Default value to set if path doesn't exist.
+     * @returns {*} The value at path (existing or newly set default).
+     */
+    setdefault(path, defaultVal = null) {
+        const node = this.getNode(path);
+        if (!node) {
+            this.setItem(path, defaultVal);
+            return defaultVal;
+        }
+        return node.value;
+    }
+
+    /**
+     * Return a deep copy of this Bag.
+     *
+     * Creates a new Bag with copies of all nodes. Nested Bags are
+     * recursively deep copied. Values are copied by reference unless
+     * they are Bags. Node attributes are copied as a new dict.
+     *
+     * @returns {Bag} A new Bag with copied nodes.
+     *
+     * @example
+     * const copy = bag.deepcopy();
+     * copy.setItem('b.c', 3);
+     * // Original bag['b.c'] unchanged
+     */
+    deepcopy() {
+        const result = new Bag();
+        for (const node of this._nodes) {
+            let value = node.getValue(true);  // static value
+            if (value instanceof Bag) {
+                value = value.deepcopy();
+            }
+            result.setItem(node.label, value, { ...node.getAttr() });
+        }
+        return result;
+    }
+
+    /**
+     * Update this Bag with nodes from source.
+     *
+     * Merges nodes from source into this Bag. For existing labels,
+     * updates the value and merges attributes. For new labels, adds
+     * the node.
+     *
+     * @param {Bag|Object} source - A Bag or plain object to merge from.
+     * @param {boolean} [ignoreNone=false] - If true, don't overwrite existing values with null.
+     *
+     * @example
+     * bag.update({ a: 10, c: 3 });  // Updates 'a', adds 'c'
+     * bag.update(otherBag);          // Merge from another Bag
+     */
+    update(source, ignoreNone = false) {
+        // Normalize to list of [label, value, attr]
+        let items;
+        if (source instanceof Bag) {
+            items = source.query('#k,#v,#a');
+        } else {
+            // Plain object
+            items = Object.entries(source).map(([k, v]) => [k, v, {}]);
+        }
+
+        for (const [label, value, attr] of items) {
+            if (this._nodes.has(label)) {
+                const currNode = this._nodes.get(label);
+                // Merge attributes
+                currNode.setAttr(attr, true);
+                const currValue = currNode.getValue(true);  // static
+                if (value instanceof Bag && currValue instanceof Bag) {
+                    // Recursive update for nested Bags
+                    currValue.update(value, ignoreNone);
+                } else {
+                    if (!ignoreNone || value !== null) {
+                        currNode.setValue(value);
+                    }
+                }
+            } else {
+                this.setItem(label, value, attr);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // walk - Depth-first tree traversal
     // -------------------------------------------------------------------------
 
