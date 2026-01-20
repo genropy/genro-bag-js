@@ -972,4 +972,169 @@ describe('Bag', () => {
             assert.strictEqual(bag.rootAttributes, null);
         });
     });
+
+    describe('nodes property', () => {
+        it('should return all nodes', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+
+            const nodes = bag.nodes;
+            assert.strictEqual(nodes.length, 3);
+            assert.strictEqual(nodes[0].label, 'a');
+            assert.strictEqual(nodes[1].label, 'b');
+            assert.strictEqual(nodes[2].label, 'c');
+        });
+
+        it('should return empty array for empty bag', () => {
+            const bag = new Bag();
+            assert.deepStrictEqual(bag.nodes, []);
+        });
+    });
+
+    describe('node() method', () => {
+        it('should get node by label', () => {
+            const bag = new Bag();
+            bag.setItem('alpha', 10, { type: 'number' });
+            bag.setItem('beta', 20);
+
+            const node = bag.node('alpha');
+            assert.strictEqual(node.label, 'alpha');
+            assert.strictEqual(node.value, 10);
+            assert.strictEqual(node.getAttr('type'), 'number');
+        });
+
+        it('should get node by index', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            bag.setItem('c', 3);
+
+            const node = bag.node(1);
+            assert.strictEqual(node.label, 'b');
+            assert.strictEqual(node.value, 2);
+        });
+
+        it('should return null for missing label', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            assert.strictEqual(bag.node('missing'), null);
+        });
+
+        it('should return null for out of range index', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            assert.strictEqual(bag.node(99), null);
+        });
+    });
+
+    describe('setAttr() method', () => {
+        it('should set attributes on path', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+            bag.setAttr('item', { color: 'red', size: 10 });
+
+            const node = bag.getNode('item');
+            assert.strictEqual(node.getAttr('color'), 'red');
+            assert.strictEqual(node.getAttr('size'), 10);
+        });
+
+        it('should merge with existing attributes', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { existing: 'attr' });
+            bag.setAttr('item', { color: 'blue' });
+
+            const node = bag.getNode('item');
+            assert.strictEqual(node.getAttr('existing'), 'attr');
+            assert.strictEqual(node.getAttr('color'), 'blue');
+        });
+
+        it('should work on nested path', () => {
+            const bag = new Bag();
+            bag.setItem('parent.child', 'value');
+            bag.setAttr('parent.child', { nested: true });
+
+            assert.strictEqual(bag.getNode('parent.child').getAttr('nested'), true);
+        });
+    });
+
+    describe('getAttr() method', () => {
+        it('should get attribute from path', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { color: 'red' });
+
+            assert.strictEqual(bag.getAttr('item', 'color'), 'red');
+        });
+
+        it('should return default for missing attribute', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+
+            assert.strictEqual(bag.getAttr('item', 'missing'), null);
+            assert.strictEqual(bag.getAttr('item', 'missing', 'default'), 'default');
+        });
+
+        it('should return default for missing path', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.getAttr('missing', 'attr'), null);
+            assert.strictEqual(bag.getAttr('missing', 'attr', 'default'), 'default');
+        });
+
+        it('should work on nested path', () => {
+            const bag = new Bag();
+            bag.setItem('parent.child', 'value', { level: 2 });
+
+            assert.strictEqual(bag.getAttr('parent.child', 'level'), 2);
+        });
+    });
+
+    describe('delAttr() method', () => {
+        it('should delete single attribute', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { color: 'red', size: 10 });
+            bag.delAttr('item', 'color');
+
+            const node = bag.getNode('item');
+            assert.strictEqual(node.getAttr('color'), null);
+            assert.strictEqual(node.getAttr('size'), 10);
+        });
+
+        it('should delete multiple attributes', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value', { a: 1, b: 2, c: 3 });
+            bag.delAttr('item', 'a', 'c');
+
+            const node = bag.getNode('item');
+            assert.strictEqual(node.getAttr('a'), null);
+            assert.strictEqual(node.getAttr('b'), 2);
+            assert.strictEqual(node.getAttr('c'), null);
+        });
+
+        it('should do nothing for missing path', () => {
+            const bag = new Bag();
+            bag.delAttr('missing', 'attr'); // Should not throw
+        });
+    });
+
+    describe('getInheritedAttributes() method', () => {
+        it('should return empty object for root bag', () => {
+            const bag = new Bag();
+            assert.deepStrictEqual(bag.getInheritedAttributes(), {});
+        });
+
+        it('should return inherited attributes from parent chain', () => {
+            const root = new Bag();
+            root.setBackref();
+            root.setItem('parent', new Bag(), { parentAttr: 'value', shared: 'parent' });
+            root.setItem('parent.child', new Bag(), { childAttr: 'child', shared: 'child' });
+
+            const child = root.getItem('parent.child');
+            const inherited = child.getInheritedAttributes();
+
+            assert.strictEqual(inherited.childAttr, 'child');
+            assert.strictEqual(inherited.parentAttr, 'value');
+            assert.strictEqual(inherited.shared, 'child'); // Child overrides parent
+        });
+    });
 });

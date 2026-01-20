@@ -639,6 +639,91 @@ export class Bag {
     }
 
     // -------------------------------------------------------------------------
+    // Node Access Methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Property alias for getNodes().
+     *
+     * @returns {BagNode[]} List of BagNodes.
+     */
+    get nodes() {
+        return this.getNodes();
+    }
+
+    /**
+     * Get a first-level node by label or index.
+     *
+     * Sync method for quick access to direct child nodes.
+     * Does not traverse paths or trigger resolvers.
+     *
+     * @param {string|number} key - Node label (str) or index (int).
+     * @returns {BagNode|null} The BagNode if found, null otherwise.
+     *
+     * @example
+     * bag.node('a').value  // 1
+     * bag.node(0).label    // 'a'
+     */
+    node(key) {
+        return this._nodes.get(key);
+    }
+
+    /**
+     * Set attributes on a node at the given path.
+     *
+     * @param {string|null} [path=null] - Path to the node.
+     * @param {Object|null} [attr=null] - Dict of attributes to set.
+     * @param {boolean} [removeNullAttributes=true] - If true, remove attributes with null value.
+     */
+    setAttr(path = null, attr = null, removeNullAttributes = true) {
+        const node = this.getNode(path);
+        if (node) {
+            node.setAttr(attr, true, removeNullAttributes);
+        }
+    }
+
+    /**
+     * Get an attribute from a node at the given path.
+     *
+     * @param {string|null} [path=null] - Path to the node.
+     * @param {string|null} [attr=null] - Attribute name to get.
+     * @param {*} [defaultVal=null] - Default value if node or attribute not found.
+     * @returns {*} Attribute value or default.
+     */
+    getAttr(path = null, attr = null, defaultVal = null) {
+        const node = this.getNode(path);
+        if (node) {
+            return node.getAttr(attr, defaultVal);
+        }
+        return defaultVal;
+    }
+
+    /**
+     * Delete attributes from a node at the given path.
+     *
+     * @param {string|null} [path=null] - Path to the node.
+     * @param {...string} attrs - Attribute names to delete.
+     */
+    delAttr(path = null, ...attrs) {
+        const node = this.getNode(path);
+        if (node) {
+            node.delAttr(...attrs);
+        }
+    }
+
+    /**
+     * Get inherited attributes from parent chain.
+     *
+     * @returns {Object} Dict of attributes inherited from parent nodes.
+     */
+    getInheritedAttributes() {
+        if (this._parentNode) {
+            return this._parentNode.getInheritedAttributes();
+        }
+        return {};
+    }
+
+    // -------------------------------------------------------------------------
     // Query Methods (BagQuery)
     // -------------------------------------------------------------------------
 
