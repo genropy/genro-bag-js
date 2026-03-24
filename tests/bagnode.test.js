@@ -392,4 +392,121 @@ describe('BagNode', () => {
             assert.strictEqual(node.staticValue, null);
         });
     });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('setValue with BagResolver', () => {
+        it('should assign resolver when BagResolver passed as value', () => {
+            const resolver = new BagCbResolver({ callback: () => 42 });
+            const node = new BagNode(null, 'test');
+            node.setValue(resolver);
+            assert.strictEqual(node.resolver, resolver);
+            assert.strictEqual(node.staticValue, null);
+        });
+
+        it('should link resolver to node', () => {
+            const resolver = new BagCbResolver({ callback: () => 42 });
+            const node = new BagNode(null, 'test');
+            node.setValue(resolver);
+            assert.strictEqual(resolver.node, node);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('setValue with BagNode', () => {
+        it('should extract value and merge attrs from BagNode', () => {
+            const source = new BagNode(null, 'source', 99, { color: 'red', size: 10 });
+            const target = new BagNode(null, 'target');
+            target.setValue(source);
+            assert.strictEqual(target.staticValue, 99);
+            assert.strictEqual(target.getAttr('color'), 'red');
+            assert.strictEqual(target.getAttr('size'), 10);
+        });
+
+        it('should merge BagNode attrs with explicit attrs', () => {
+            const source = new BagNode(null, 'source', 99, { color: 'red' });
+            const target = new BagNode(null, 'target');
+            target.setValue(source, true, { extra: 'yes' });
+            assert.strictEqual(target.getAttr('color'), 'red');
+            assert.strictEqual(target.getAttr('extra'), 'yes');
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('asTuple with resolver', () => {
+        it('should trigger resolver via value property', () => {
+            const resolver = new BagCbResolver({ callback: () => 77 });
+            const node = new BagNode(null, 'test', null, null, resolver);
+            const tuple = node.asTuple();
+            assert.strictEqual(tuple[0], 'test');
+            assert.strictEqual(tuple[1], 77);
+            assert.strictEqual(tuple[3], resolver);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('isEqual with resolver', () => {
+        it('should be equal when same resolver', () => {
+            const resolver = new BagCbResolver({ callback: () => 42 });
+            const a = new BagNode(null, 'x', null, null, resolver);
+            const b = new BagNode(null, 'x', null, null, resolver);
+            assert.strictEqual(a.isEqual(b), true);
+        });
+
+        it('should not be equal when different resolvers', () => {
+            const r1 = new BagCbResolver({ callback: () => 42 });
+            const r2 = new BagCbResolver({ callback: () => 42 });
+            const a = new BagNode(null, 'x', null, null, r1);
+            const b = new BagNode(null, 'x', null, null, r2);
+            assert.strictEqual(a.isEqual(b), false);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('diff', () => {
+        it('should return null for identical nodes', () => {
+            const a = new BagNode(null, 'x', 42, { color: 'red' });
+            const b = new BagNode(null, 'x', 42, { color: 'red' });
+            assert.strictEqual(a.diff(b), null);
+        });
+
+        it('should detect label difference', () => {
+            const a = new BagNode(null, 'x', 42);
+            const b = new BagNode(null, 'y', 42);
+            assert.strictEqual(a.diff(b), 'Other label: y');
+        });
+
+        it('should detect attribute difference', () => {
+            const a = new BagNode(null, 'x', 42, { color: 'red' });
+            const b = new BagNode(null, 'x', 42, { color: 'blue' });
+            assert.ok(a.diff(b).startsWith('attributes self:'));
+        });
+
+        it('should detect value difference', () => {
+            const a = new BagNode(null, 'x', 42);
+            const b = new BagNode(null, 'x', 99);
+            assert.ok(a.diff(b).startsWith('value self:'));
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('toJson', () => {
+        it('should return dict with label, value, attr', () => {
+            const node = new BagNode(null, 'test', 42, { color: 'red' });
+            const result = node.toJson();
+            assert.deepStrictEqual(result, {
+                label: 'test',
+                value: 42,
+                attr: { color: 'red' }
+            });
+        });
+
+        it('should delegate to value.toJson for Bag values', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            const node = new BagNode(null, 'test', bag);
+            const result = node.toJson();
+            assert.strictEqual(result.label, 'test');
+            assert.ok(result.value !== bag); // converted
+        });
+    });
 });

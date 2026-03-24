@@ -1,6 +1,7 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { fromTytx } from 'genro-tytx';
+import { BagResolver } from './resolver.js';
 
 /**
  * BagNode - individual node in a Bag hierarchy.
@@ -125,8 +126,17 @@ export class BagNode {
      * @param {string} [reason=null] - Optional reason string for the trigger.
      */
     setValue(value, trigger = true, attributes = null, updattr = true, removeNullAttributes = true, reason = null) {
-        // TODO: Handle BagResolver passed as value
-        // TODO: Handle BagNode passed as value - extract its value and attrs
+        // Handle BagResolver passed as value
+        if (value instanceof BagResolver) {
+            this.resolver = value;
+            value = null;
+        }
+        // Handle BagNode passed as value - extract its value and attrs
+        else if (value instanceof BagNode) {
+            attributes = attributes || {};
+            Object.assign(attributes, value._attr);
+            value = value._value;
+        }
 
         const oldvalue = this._value;
         this._value = value;
@@ -478,7 +488,7 @@ export class BagNode {
      * @returns {Array} Array of [label, value, attr, resolver].
      */
     asTuple() {
-        return [this.label, this._value, this._attr, this._resolver || null];
+        return [this.label, this.value, this._attr, this._resolver || null];
     }
 
     // -------------------------------------------------------------------------
@@ -509,11 +519,52 @@ export class BagNode {
                 return false;
             }
         }
+        // If has resolver, compare resolver identity
+        if (this._resolver !== null) {
+            return this._resolver === other._resolver;
+        }
         // Compare values
         if (this._value && typeof this._value.isEqual === 'function') {
             return this._value.isEqual(other._value);
         }
         return this._value === other._value;
+    }
+
+    /**
+     * Compare this node with another and return differences.
+     *
+     * @param {BagNode} other - Another BagNode to compare with.
+     * @returns {string|null} Description of differences, or null if equal.
+     */
+    diff(other) {
+        if (this.label !== other.label) {
+            return `Other label: ${other.label}`;
+        }
+        // Compare attributes
+        const thisKeys = Object.keys(this._attr);
+        const otherKeys = Object.keys(other._attr);
+        if (thisKeys.length !== otherKeys.length ||
+            thisKeys.some(k => this._attr[k] !== other._attr[k])) {
+            return `attributes self:${JSON.stringify(this._attr)} --- other:${JSON.stringify(other._attr)}`;
+        }
+        if (this._value !== other._value) {
+            return `value self:${this._value} --- other:${other._value}`;
+        }
+        return null;
+    }
+
+    /**
+     * Convert node to JSON-serializable dict.
+     *
+     * @param {boolean} [typed=true] - If true, include type information.
+     * @returns {Object} Dict with keys 'label', 'value', and 'attr'.
+     */
+    toJson(typed = true) {
+        let value = this.value;
+        if (value && typeof value.toJson === 'function') {
+            value = value.toJson(typed, true);
+        }
+        return { label: this.label, value: value, attr: this._attr };
     }
 
     // -------------------------------------------------------------------------
