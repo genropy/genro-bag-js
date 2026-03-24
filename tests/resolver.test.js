@@ -2,7 +2,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { BagResolver, BagCbResolver } from '../src/resolver.js';
+import { BagResolver, BagCbResolver, RETRY_POLICIES } from '../src/resolver.js';
 import { BagNode } from '../src/bag-node.js';
 
 describe('BagResolver', () => {
@@ -338,5 +338,53 @@ describe('BagCbResolver', () => {
 
             assert.strictEqual(callCount, 3);
         });
+    });
+});
+
+describe('RETRY_POLICIES', () => {
+    it('should have network policy', () => {
+        assert.ok(RETRY_POLICIES.network);
+        assert.strictEqual(RETRY_POLICIES.network.maxAttempts, 3);
+        assert.strictEqual(RETRY_POLICIES.network.delay, 1.0);
+        assert.strictEqual(RETRY_POLICIES.network.backoff, 2.0);
+        assert.strictEqual(RETRY_POLICIES.network.jitter, true);
+        assert.ok(Array.isArray(RETRY_POLICIES.network.on));
+    });
+
+    it('should have aggressive policy', () => {
+        assert.ok(RETRY_POLICIES.aggressive);
+        assert.strictEqual(RETRY_POLICIES.aggressive.maxAttempts, 5);
+        assert.strictEqual(RETRY_POLICIES.aggressive.delay, 0.5);
+    });
+
+    it('should have gentle policy', () => {
+        assert.ok(RETRY_POLICIES.gentle);
+        assert.strictEqual(RETRY_POLICIES.gentle.maxAttempts, 2);
+        assert.strictEqual(RETRY_POLICIES.gentle.delay, 2.0);
+        assert.strictEqual(RETRY_POLICIES.gentle.jitter, false);
+    });
+});
+
+describe('BagResolver with retryPolicy', () => {
+    it('should accept retryPolicy in constructor', () => {
+        const resolver = new BagResolver({ retryPolicy: 'network' });
+        assert.strictEqual(resolver._retryPolicy, 'network');
+    });
+
+    it('should accept custom retryPolicy object', () => {
+        const policy = { maxAttempts: 5, delay: 0.5 };
+        const resolver = new BagResolver({ retryPolicy: policy });
+        assert.deepStrictEqual(resolver._retryPolicy, policy);
+    });
+
+    it('should call init() hook', () => {
+        let initCalled = false;
+        class TestResolver extends BagResolver {
+            init() {
+                initCalled = true;
+            }
+        }
+        new TestResolver();
+        assert.strictEqual(initCalled, true);
     });
 });

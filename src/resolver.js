@@ -11,9 +11,124 @@
  *   - cacheTime = 0: never cache, always resolve
  *   - cacheTime < 0: cache forever (resolve once)
  *
+ * Retry Policy:
+ *   - retryPolicy = null -> NO retry (default)
+ *   - retryPolicy = 'network' -> use predefined RETRY_POLICIES.network
+ *   - retryPolicy = {...} -> custom policy object
+ *
  * The load() method can return a value directly (sync) or a Promise (async).
  * The caller handles accordingly.
  */
+
+/**
+ * Predefined retry policies.
+ */
+export const RETRY_POLICIES = {
+    network: {
+        maxAttempts: 3,
+        delay: 1.0,
+        backoff: 2.0,
+        jitter: true,
+        on: ['TypeError', 'NetworkError', 'AbortError']
+    },
+    aggressive: {
+        maxAttempts: 5,
+        delay: 0.5,
+        backoff: 2.0,
+        jitter: true,
+        on: ['Error']
+    },
+    gentle: {
+        maxAttempts: 2,
+        delay: 2.0,
+        backoff: 1.5,
+        jitter: false,
+        on: ['TypeError', 'NetworkError']
+    }
+};
+
+/**
+ * Get retry policy from resolver, resolving string references.
+ * @param {BagResolver} resolver
+ * @returns {Object|null}
+ */
+function getRetryPolicy(resolver) {
+    const policy = resolver._retryPolicy;
+    if (policy === null || policy === undefined) {
+        return null;
+    }
+    if (typeof policy === 'string') {
+        return RETRY_POLICIES[policy] || null;
+    }
+    return policy;
+}
+
+/**
+ * Check if error matches retry policy.
+ * @param {Error} error
+ * @param {Array<string>} errorTypes
+ * @returns {boolean}
+ */
+function shouldRetry(error, errorTypes) {
+    return errorTypes.some(type => {
+        if (type === 'Error') return true;
+        return error.name === type || error.constructor.name === type;
+    });
+}
+
+/**
+ * Sleep for specified milliseconds.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute function with retry logic.
+ * @param {Function} fn - Function to execute (can be async)
+ * @param {Object} policy - Retry policy
+ * @returns {*} Result of function
+ */
+async function withRetry(fn, policy) {
+    if (!policy) {
+        return fn();
+    }
+
+    const maxAttempts = policy.maxAttempts || 3;
+    const delay = policy.delay || 1.0;
+    const backoff = policy.backoff || 2.0;
+    const jitter = policy.jitter !== false;
+    const errorTypes = policy.on || ['Error'];
+
+    let lastError = null;
+    let currentDelay = delay * 1000; // Convert to ms
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            const result = fn();
+            if (result instanceof Promise) {
+                return await result;
+            }
+            return result;
+        } catch (error) {
+            lastError = error;
+            if (attempt < maxAttempts - 1 && shouldRetry(error, errorTypes)) {
+                let sleepTime = currentDelay;
+                if (jitter) {
+                    sleepTime *= (1 + Math.random() * 0.1);
+                }
+                await sleep(sleepTime);
+                currentDelay *= backoff;
+            } else {
+                throw error;
+            }
+        }
+    }
+    throw lastError;
+}
+
 export class BagResolver {
     /**
      * Default options for this resolver class.
@@ -22,7 +137,8 @@ export class BagResolver {
     static classKwargs = {
         cacheTime: 0,
         readOnly: false,
-        asBag: null
+        asBag: null,
+        retryPolicy: null
     };
 
     /**
@@ -34,7 +150,7 @@ export class BagResolver {
     /**
      * Parameters that are internal (not passed to load()).
      */
-    static internalParams = new Set(['cacheTime', 'readOnly', 'asBag']);
+    static internalParams = new Set(['cacheTime', 'readOnly', 'asBag', 'retryPolicy']);
 
     /**
      * Create a new resolver.
@@ -49,6 +165,7 @@ export class BagResolver {
         this._cacheTime = merged.cacheTime;
         this._readOnly = merged.readOnly;
         this._asBag = merged.asBag;
+        this._retryPolicy = merged.retryPolicy;
 
         // Store non-internal params for load()
         this._kw = {};
@@ -62,6 +179,17 @@ export class BagResolver {
         // Cache state
         this._lastUpdate = null;
         this._node = null;
+
+        // Hook for subclasses
+        this.init();
+    }
+
+    /**
+     * Hook called at the end of constructor.
+     * Override in subclasses for custom initialization.
+     */
+    init() {
+        // Override in subclasses
     }
 
     /**
@@ -184,10 +312,19 @@ export class BagResolver {
         }
         Object.assign(kwargs, callKwargs);
 
-        // Call load
-        const result = this.load(kwargs);
+        // Get retry policy
+        const policy = getRetryPolicy(this);
 
-        // Handle sync vs async result
+        // Call load with retry
+        const doLoad = () => this.load(kwargs);
+
+        if (policy) {
+            // With retry - always async
+            return withRetry(doLoad, policy).then(value => this._finalize(value));
+        }
+
+        // Without retry - can be sync or async
+        const result = doLoad();
         if (result instanceof Promise) {
             return result.then(value => this._finalize(value));
         }
@@ -262,12 +399,13 @@ export class BagCbResolver extends BagResolver {
         cacheTime: 0,
         readOnly: false,
         asBag: false,
+        retryPolicy: null,
         callback: null
     };
 
     static classArgs = ['callback'];
 
-    static internalParams = new Set(['cacheTime', 'readOnly', 'asBag', 'callback']);
+    static internalParams = new Set(['cacheTime', 'readOnly', 'asBag', 'retryPolicy', 'callback']);
 
     /**
      * Create a callback resolver.
