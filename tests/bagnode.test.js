@@ -3,6 +3,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { BagNode } from '../src/bag-node.js';
+import { Bag } from '../src/bag.js';
+import { BagCbResolver } from '../src/resolver.js';
 
 describe('BagNode', () => {
     describe('getValue with queryString', () => {
@@ -242,6 +244,152 @@ describe('BagNode', () => {
             node.setValue(20);
 
             assert.strictEqual(events.length, 0);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('nodeTag and xmlTag', () => {
+        it('should default to null', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node.nodeTag, null);
+            assert.strictEqual(node.xmlTag, null);
+        });
+
+        it('should accept nodeTag in constructor', () => {
+            const node = new BagNode(null, 'test', 42, null, null, 'myTag');
+            assert.strictEqual(node.nodeTag, 'myTag');
+        });
+
+        it('should accept xmlTag in constructor', () => {
+            const node = new BagNode(null, 'test', 42, null, null, null, 'div');
+            assert.strictEqual(node.xmlTag, 'div');
+        });
+
+        it('should accept both nodeTag and xmlTag', () => {
+            const node = new BagNode(null, 'test', 42, null, null, 'myTag', 'div');
+            assert.strictEqual(node.nodeTag, 'myTag');
+            assert.strictEqual(node.xmlTag, 'div');
+        });
+
+        it('should allow mutation after construction', () => {
+            const node = new BagNode(null, 'test', 42);
+            node.nodeTag = 'changed';
+            node.xmlTag = 'span';
+            assert.strictEqual(node.nodeTag, 'changed');
+            assert.strictEqual(node.xmlTag, 'span');
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('isValid and _invalidReasons', () => {
+        it('should be valid by default', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node.isValid, true);
+            assert.deepStrictEqual(node._invalidReasons, []);
+        });
+
+        it('should become invalid when reasons are added', () => {
+            const node = new BagNode(null, 'test', 42);
+            node._invalidReasons.push('required field missing');
+            assert.strictEqual(node.isValid, false);
+        });
+
+        it('should become valid again when reasons are cleared', () => {
+            const node = new BagNode(null, 'test', 42);
+            node._invalidReasons.push('error');
+            assert.strictEqual(node.isValid, false);
+            node._invalidReasons.length = 0;
+            assert.strictEqual(node.isValid, true);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('compiled', () => {
+        it('should be null internally before first access', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node._compiled, null);
+        });
+
+        it('should return empty object on first access', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.deepStrictEqual(node.compiled, {});
+        });
+
+        it('should return same object on subsequent access', () => {
+            const node = new BagNode(null, 'test', 42);
+            const c1 = node.compiled;
+            const c2 = node.compiled;
+            assert.strictEqual(c1, c2);
+        });
+
+        it('should allow storing data', () => {
+            const node = new BagNode(null, 'test', 42);
+            node.compiled.widget = 'TextBox';
+            assert.strictEqual(node.compiled.widget, 'TextBox');
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('isBranch', () => {
+        it('should return false for scalar value', () => {
+            const node = new BagNode(null, 'test', 42);
+            assert.strictEqual(node.isBranch, false);
+        });
+
+        it('should return false for null value', () => {
+            const node = new BagNode(null, 'test', null);
+            assert.strictEqual(node.isBranch, false);
+        });
+
+        it('should return true for Bag value', () => {
+            const bag = new Bag();
+            const node = new BagNode(null, 'test', bag);
+            assert.strictEqual(node.isBranch, true);
+        });
+
+        it('should return true for any object with _htraverse method', () => {
+            const fakeBag = { _htraverse: () => {} };
+            const node = new BagNode(null, 'test', fakeBag);
+            assert.strictEqual(node.isBranch, true);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('resolver in constructor', () => {
+        it('should accept resolver as fifth parameter', () => {
+            const resolver = new BagCbResolver({ callback: () => 99 });
+            const node = new BagNode(null, 'test', null, null, resolver);
+            assert.strictEqual(node.resolver, resolver);
+            assert.strictEqual(resolver.node, node);
+        });
+
+        it('should not set resolver when null', () => {
+            const node = new BagNode(null, 'test', 42, null, null);
+            assert.strictEqual(node.resolver, null);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('resetResolver', () => {
+        it('should reset resolver and clear value', () => {
+            let callCount = 0;
+            const resolver = new BagCbResolver({
+                callback: () => { callCount++; return 100; }
+            });
+            const node = new BagNode(null, 'test', null, null, resolver);
+
+            node.getValue();
+            assert.strictEqual(node.staticValue, 100);
+
+            node.resetResolver();
+            assert.strictEqual(node.staticValue, null);
+            assert.strictEqual(node.resolver, resolver);
+        });
+
+        it('should work when no resolver attached', () => {
+            const node = new BagNode(null, 'test', 42);
+            node.resetResolver();
+            assert.strictEqual(node.staticValue, null);
         });
     });
 });

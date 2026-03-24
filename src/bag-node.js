@@ -18,14 +18,21 @@ export class BagNode {
      * @param {string} label - The node's key/name within the parent Bag.
      * @param {*} [value=null] - The node's value (can be scalar or Bag).
      * @param {Object} [attr=null] - Dict of attributes to set.
+     * @param {BagResolver} [resolver=null] - Resolver for lazy value loading.
+     * @param {string} [nodeTag=null] - Semantic type tag for the node.
+     * @param {string} [xmlTag=null] - Original XML tag name (for serialization).
      */
-    constructor(parentBag, label, value = null, attr = null) {
+    constructor(parentBag, label, value = null, attr = null, resolver = null, nodeTag = null, xmlTag = null) {
         this.label = label;
         this._value = null;
         this._attr = {};
         this._parentBag = null;
         this._resolver = null;
         this._nodeSubscribers = {};
+        this.nodeTag = nodeTag;
+        this.xmlTag = xmlTag;
+        this._invalidReasons = [];
+        this._compiled = null;
 
         // Set parent
         this.parentBag = parentBag;
@@ -38,6 +45,11 @@ export class BagNode {
         // Process value - trigger=false during construction
         if (value !== null) {
             this.setValue(value, false);
+        }
+
+        // Set resolver after value (same order as Python)
+        if (resolver) {
+            this.resolver = resolver;
         }
     }
 
@@ -196,6 +208,16 @@ export class BagNode {
         }
     }
 
+    /**
+     * Reset the resolver and clear the node value.
+     */
+    resetResolver() {
+        if (this._resolver) {
+            this._resolver.reset();
+        }
+        this.setValue(null);
+    }
+
     // -------------------------------------------------------------------------
     // Attribute Methods
     // -------------------------------------------------------------------------
@@ -344,6 +366,42 @@ export class BagNode {
      */
     unsubscribe(subscriberId) {
         delete this._nodeSubscribers[subscriberId];
+    }
+
+    // -------------------------------------------------------------------------
+    // Validation and Compilation Properties
+    // -------------------------------------------------------------------------
+
+    /**
+     * Check if node is valid (no invalid reasons registered).
+     *
+     * @returns {boolean} True if _invalidReasons is empty.
+     */
+    get isValid() {
+        return this._invalidReasons.length === 0;
+    }
+
+    /**
+     * Lazy-initialized compiled data storage.
+     * External systems (compilers) store compiled data here.
+     *
+     * @returns {Object} The compiled data dictionary.
+     */
+    get compiled() {
+        if (!this._compiled) {
+            this._compiled = {};
+        }
+        return this._compiled;
+    }
+
+    /**
+     * Check if this node's value is a Bag (branch node).
+     * Uses duck typing via _htraverse to avoid circular import.
+     *
+     * @returns {boolean} True if value is a Bag.
+     */
+    get isBranch() {
+        return this._value != null && typeof this._value._htraverse === 'function';
     }
 
     // -------------------------------------------------------------------------
