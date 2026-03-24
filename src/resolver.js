@@ -517,7 +517,11 @@ export class BagCbResolver extends BagResolver {
     /**
      * Load by calling the callback.
      *
-     * @param {Object} kwargs - Parameters passed to callback.
+     * // DIFF-PYTHON: Python calls callback(**params) with expanded kwargs.
+     * // JS calls callback(params) with a single kwargs object because JS
+     * // has no **kwargs syntax. This is an intentional, unavoidable difference.
+     *
+     * @param {Object} kwargs - Parameters passed to callback as single object.
      * @returns {*} Result of callback (value or Promise).
      */
     load(kwargs) {
