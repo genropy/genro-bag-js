@@ -253,3 +253,94 @@ describe('JSON Serialization', () => {
         });
     });
 });
+
+// Aligned with Python genro-bag 0.11.0
+describe('XML nodeTag/xmlTag', () => {
+    describe('toXml with nodeTag', () => {
+        it('should use nodeTag as XML element name', () => {
+            const bag = new Bag();
+            const node = bag.setItem('mykey', 'hello');
+            node.nodeTag = 'custom_tag';
+            const xml = bag.toXml();
+            assert.ok(xml.includes('<custom_tag>'));
+            assert.ok(xml.includes('</custom_tag>'));
+        });
+
+        it('should prefer xmlTag over nodeTag', () => {
+            const bag = new Bag();
+            const node = bag.setItem('mykey', 'hello');
+            node.nodeTag = 'semantic';
+            node.xmlTag = 'original_xml';
+            const xml = bag.toXml();
+            assert.ok(xml.includes('<original_xml>'));
+        });
+
+        it('should fall back to label when no tags set', () => {
+            const bag = new Bag();
+            bag.setItem('mykey', 'hello');
+            const xml = bag.toXml();
+            assert.ok(xml.includes('<mykey>'));
+        });
+
+        it('should add _tag attribute when tag is sanitized', () => {
+            const bag = new Bag();
+            const node = bag.setItem('mykey', 'hello');
+            node.nodeTag = 'my tag!';  // contains space and !
+            const xml = bag.toXml();
+            assert.ok(xml.includes('_tag="my tag!"'));
+            assert.ok(xml.includes('<my_tag_'));
+        });
+    });
+
+    describe('fromXml saves xmlTag', () => {
+        it('should save original XML tag in node.xmlTag', () => {
+            const xml = '<root><custom_element>hello</custom_element></root>';
+            const bag = Bag.fromXml(xml);
+            const node = bag.getNode('custom_element');
+            assert.equal(node.xmlTag, 'custom_element');
+        });
+
+        it('should restore label from _tag attribute', () => {
+            const xml = '<root><sanitized_name _tag="original-name">hello</sanitized_name></root>';
+            const bag = Bag.fromXml(xml);
+            // Label should be the _tag value
+            assert.ok(bag.getNode('original-name') !== null);
+            // xmlTag should be the XML element name
+            assert.equal(bag.getNode('original-name').xmlTag, 'sanitized_name');
+        });
+    });
+
+    describe('fromXml with tagAttribute', () => {
+        it('should use tagAttribute as label', () => {
+            const xml = '<root><div tag="myComponent">hello</div></root>';
+            const bag = Bag.fromXml(xml, { tagAttribute: 'tag' });
+            assert.ok(bag.getNode('myComponent') !== null);
+            assert.equal(bag.getNode('myComponent').xmlTag, 'div');
+        });
+
+        it('should not include tagAttribute in node attrs', () => {
+            const xml = '<root><div tag="myComponent" color="red">hello</div></root>';
+            const bag = Bag.fromXml(xml, { tagAttribute: 'tag' });
+            const node = bag.getNode('myComponent');
+            assert.equal(node.getAttr('color'), 'red');
+            assert.equal(node.getAttr('tag'), null);
+        });
+    });
+
+    describe('round-trip with nodeTag', () => {
+        it('should round-trip through XML preserving tags', () => {
+            const bag = new Bag();
+            const node = bag.setItem('mykey', 'hello', { color: 'red' });
+            node.nodeTag = 'custom_type';
+
+            // Wrap in root for valid XML round-trip
+            const xml = `<root>${bag.toXml()}</root>`;
+            const restored = Bag.fromXml(xml);
+
+            // Label is the XML tag name (custom_type)
+            assert.equal(restored.getItem('custom_type'), 'hello');
+            assert.equal(restored.getNode('custom_type').getAttr('color'), 'red');
+            assert.equal(restored.getNode('custom_type').xmlTag, 'custom_type');
+        });
+    });
+});

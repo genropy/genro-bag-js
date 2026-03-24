@@ -1796,12 +1796,18 @@ export class Bag {
      * @private
      */
     _nodeToXml(node, selfClosedTags = null) {
-        // Use xml_tag, tag, or label
-        const xmlTag = node.xmlTag || node.tag || node.label;
-        const tag = this._sanitizeTag(xmlTag);
+        // Priority: xml_tag > node_tag > label (same as Python)
+        const originalTag = node.xmlTag || node.nodeTag || node.label;
+        const tag = this._sanitizeTag(originalTag);
 
         // Build attributes string
         const attrsParts = [];
+
+        // If tag was sanitized, save original as _tag attribute
+        if (tag !== originalTag) {
+            attrsParts.push(`_tag="${this._escapeAttr(originalTag)}"`);
+        }
+
         if (node.attr) {
             for (const [k, v] of Object.entries(node.attr)) {
                 if (v !== null && v !== false && v !== undefined) {
@@ -1902,9 +1908,13 @@ export class Bag {
      * Deserialize Bag from XML format.
      *
      * @param {string} source - XML string to parse.
+     * @param {Object} [options={}] - Parsing options.
+     * @param {string} [options.tagAttribute=null] - If set, save XML tag name as this attribute on each node.
      * @returns {Bag} Reconstructed Bag hierarchy.
      */
-    static fromXml(source) {
+    static fromXml(source, options = {}) {
+        const { tagAttribute = null } = options;
+
         // Use DOMParser (browser) or @xmldom/xmldom (Node.js)
         let doc;
         if (typeof DOMParser !== 'undefined') {
@@ -1921,14 +1931,16 @@ export class Bag {
             doc = parser.parseFromString(source, 'application/xml');
         }
 
-        return Bag._xmlElementToBag(doc.documentElement);
+        return Bag._xmlElementToBag(doc.documentElement, tagAttribute);
     }
 
     /**
      * Convert XML element to Bag (recursive).
+     * @param {Element} element - XML element to convert.
+     * @param {string|null} [tagAttribute=null] - If set, save tag name as this attribute.
      * @private
      */
-    static _xmlElementToBag(element) {
+    static _xmlElementToBag(element, tagAttribute = null) {
         const bag = new Bag();
 
         // Use childNodes and filter for element nodes (nodeType === 1)
@@ -1936,7 +1948,7 @@ export class Bag {
         const childElements = Array.from(element.childNodes).filter(n => n.nodeType === 1);
 
         for (const child of childElements) {
-            const label = child.tagName;
+            const originalXmlTag = child.tagName;
             const attr = {};
 
             // Collect attributes
@@ -1945,16 +1957,31 @@ export class Bag {
                 attr[attrNode.name] = attrNode.value;
             }
 
+            // Resolve label: _tag attribute > tagAttribute > XML tag name
+            let label = originalXmlTag;
+            if ('_tag' in attr) {
+                label = attr._tag;
+                delete attr._tag;
+            }
+            if (tagAttribute && tagAttribute in attr) {
+                label = attr[tagAttribute];
+                delete attr[tagAttribute];
+            }
+
             // Check if has child elements (nested Bag)
             const childChildElements = Array.from(child.childNodes).filter(n => n.nodeType === 1);
+            let node;
             if (childChildElements.length > 0) {
-                const childBag = Bag._xmlElementToBag(child);
-                bag.setItem(label, childBag, Object.keys(attr).length > 0 ? attr : null);
+                const childBag = Bag._xmlElementToBag(child, tagAttribute);
+                node = bag.setItem(label, childBag, Object.keys(attr).length > 0 ? attr : null);
             } else {
                 // Text content
                 const value = child.textContent || '';
-                bag.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
+                node = bag.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
             }
+
+            // Save original XML tag for round-trip serialization
+            node.xmlTag = originalXmlTag;
         }
 
         return bag;
