@@ -4,6 +4,8 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { BagResolver, BagCbResolver, RETRY_POLICIES } from '../src/resolver.js';
 import { BagNode } from '../src/bag-node.js';
+// Import Bag to trigger BagResolver.registerBagClass() for asBag tests
+import '../src/bag.js';
 
 describe('BagResolver', () => {
     describe('constructor', () => {
@@ -386,5 +388,116 @@ describe('BagResolver with retryPolicy', () => {
         }
         new TestResolver();
         assert.strictEqual(initCalled, true);
+    });
+});
+
+// Aligned with Python genro-bag 0.11.0
+describe('BagResolver fingerprint cache', () => {
+    it('should reload when kwargs change even if cache not expired', () => {
+        let lastKwargs = null;
+        let callCount = 0;
+        class TestResolver extends BagResolver {
+            load(kwargs) {
+                callCount++;
+                lastKwargs = { ...kwargs };
+                return kwargs.x * 2;
+            }
+        }
+        const resolver = new TestResolver({ cacheTime: -1 }); // cache forever
+        const node = new BagNode(null, 'test', null);
+        resolver.setNode(node);
+
+        resolver.resolve({ x: 10 });
+        assert.strictEqual(callCount, 1);
+        assert.strictEqual(node.staticValue, 20);
+
+        // Same kwargs → should use cache
+        resolver.resolve({ x: 10 });
+        assert.strictEqual(callCount, 1);
+
+        // Different kwargs → should reload despite cache forever
+        resolver.resolve({ x: 20 });
+        assert.strictEqual(callCount, 2);
+        assert.strictEqual(node.staticValue, 40);
+    });
+});
+
+// Aligned with Python genro-bag 0.11.0
+describe('BagResolver cachedValue', () => {
+    it('should store in node when attached', () => {
+        class TestResolver extends BagResolver {
+            load() { return 42; }
+        }
+        const resolver = new TestResolver();
+        const node = new BagNode(null, 'test', null);
+        resolver.setNode(node);
+
+        resolver.resolve();
+        assert.strictEqual(resolver.cachedValue, 42);
+        assert.strictEqual(node.staticValue, 42);
+    });
+
+    it('should store locally when no node', () => {
+        class TestResolver extends BagResolver {
+            load() { return 42; }
+        }
+        const resolver = new TestResolver();
+
+        resolver.resolve();
+        assert.strictEqual(resolver.cachedValue, 42);
+    });
+
+    it('should return cached value in static mode without node', () => {
+        class TestResolver extends BagResolver {
+            load() { return 42; }
+        }
+        const resolver = new TestResolver();
+        resolver.resolve();
+
+        const result = resolver.resolve({ static: true });
+        assert.strictEqual(result, 42);
+    });
+});
+
+// Aligned with Python genro-bag 0.11.0
+describe('BagResolver asBag conversion', () => {
+    it('should convert XML string to Bag when asBag=true', () => {
+        class TestResolver extends BagResolver {
+            load() { return '<root><a>1</a></root>'; }
+        }
+        const resolver = new TestResolver({ asBag: true });
+
+        const result = resolver.resolve();
+        assert.ok(result && typeof result._htraverse === 'function');
+    });
+
+    it('should not convert when asBag=false', () => {
+        class TestResolver extends BagResolver {
+            load() { return '<root><a>1</a></root>'; }
+        }
+        const resolver = new TestResolver({ asBag: false });
+
+        const result = resolver.resolve();
+        assert.strictEqual(typeof result, 'string');
+    });
+
+    it('should convert when asBag=null and readOnly=false', () => {
+        class TestResolver extends BagResolver {
+            load() { return '<root><a>1</a></root>'; }
+        }
+        const resolver = new TestResolver({ asBag: null, readOnly: false });
+
+        const result = resolver.resolve();
+        assert.ok(result && typeof result._htraverse === 'function');
+    });
+
+    it('should not convert when asBag=null and readOnly=true', () => {
+        class TestResolver extends BagResolver {
+            load() { return '<root><a>1</a></root>'; }
+        }
+        const resolver = new TestResolver({ asBag: null, readOnly: true });
+
+        const result = resolver.resolve();
+        assert.strictEqual(typeof result, 'string');
     });
 });

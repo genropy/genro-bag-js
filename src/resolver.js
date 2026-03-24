@@ -179,6 +179,8 @@ export class BagResolver {
         // Cache state
         this._lastUpdate = null;
         this._node = null;
+        this._lastEffectiveFingerprint = null;
+        this._cachedValue = null;
 
         // Hook for subclasses
         this.init();
@@ -276,6 +278,40 @@ export class BagResolver {
      */
     reset() {
         this._lastUpdate = null;
+        this._lastEffectiveFingerprint = null;
+    }
+
+    /**
+     * Get cached value from parent node or local storage.
+     *
+     * @returns {*} The cached value.
+     */
+    get cachedValue() {
+        return this._node ? this._node._value : this._cachedValue;
+    }
+
+    /**
+     * Set cached value in parent node or local storage.
+     *
+     * @param {*} value
+     */
+    set cachedValue(value) {
+        if (this._node) {
+            this._node._value = value;
+        } else {
+            this._cachedValue = value;
+        }
+    }
+
+    /**
+     * Compute fingerprint of effective parameters for cache invalidation.
+     *
+     * @param {Object} effectiveKw - The effective kwargs.
+     * @returns {string} JSON string fingerprint.
+     * @private
+     */
+    _computeEffectiveFingerprint(effectiveKw) {
+        return JSON.stringify(Object.entries(effectiveKw).sort());
     }
 
     /**
@@ -291,12 +327,7 @@ export class BagResolver {
 
         // Static mode: return cached value without resolving
         if (isStatic) {
-            return this._node ? this._node.staticValue : null;
-        }
-
-        // Check if we need to resolve
-        if (!this.expired && this._node) {
-            return this._node.staticValue;
+            return this.cachedValue;
         }
 
         // Build kwargs: resolver._kw merged with call kwargs
@@ -311,6 +342,16 @@ export class BagResolver {
             }
         }
         Object.assign(kwargs, callKwargs);
+
+        // Fingerprint-based cache invalidation:
+        // If params changed, force reload even if TTL hasn't expired
+        const currentFingerprint = this._computeEffectiveFingerprint(kwargs);
+        if (!this._readOnly
+            && currentFingerprint === this._lastEffectiveFingerprint
+            && !this.expired) {
+            return this.cachedValue;
+        }
+        this._lastEffectiveFingerprint = currentFingerprint;
 
         // Get retry policy
         const policy = getRetryPolicy(this);
@@ -339,22 +380,71 @@ export class BagResolver {
      * @private
      */
     _finalize(value) {
-        this._lastUpdate = Date.now();
-
-        // Auto-convert to Bag if requested
-        if (this._asBag && value !== null && value !== undefined) {
-            // TODO: implement asBag conversion when Bag.fromXml etc are ready
-            // if (typeof value === 'string') {
-            //     value = Bag.fromXml(value);
-            // }
+        // asBag conversion:
+        //   true  → always convert
+        //   false → never convert
+        //   null  → convert if will be cached (!readOnly)
+        let shouldConvert;
+        if (this._asBag === true) {
+            shouldConvert = true;
+        } else if (this._asBag === false) {
+            shouldConvert = false;
+        } else {
+            shouldConvert = !this._readOnly;
         }
 
-        // Store in node unless read-only
-        if (this._node && !this._readOnly) {
-            this._node.staticValue = value;
+        if (shouldConvert && value !== null && value !== undefined) {
+            value = this._convertToBag(value);
+        }
+
+        this._lastUpdate = Date.now();
+
+        // Store via cachedValue (uses node if attached, local storage otherwise)
+        if (!this._readOnly) {
+            this.cachedValue = value;
         }
 
         return value;
+    }
+
+    /**
+     * Convert result to Bag if possible.
+     * Uses the Bag class registered via BagResolver.registerBagClass().
+     *
+     * @param {*} result - The value to convert.
+     * @returns {*} A Bag if conversion succeeded, otherwise the original value.
+     * @private
+     */
+    _convertToBag(result) {
+        const BagClass = BagResolver._BagClass;
+        if (!BagClass) {
+            return result;
+        }
+
+        if (result && typeof result._htraverse === 'function') {
+            // Already a Bag (duck typing)
+            return result;
+        }
+        if (typeof result === 'string') {
+            result = result.trim();
+            if (result.startsWith('<') && BagClass.fromXml) {
+                return BagClass.fromXml(result);
+            }
+            if ((result.startsWith('{') || result.startsWith('[')) && BagClass.fromJson) {
+                return BagClass.fromJson(result);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Register the Bag class for asBag conversion.
+     * Called by Bag module to avoid circular imports.
+     *
+     * @param {Function} BagClass - The Bag constructor.
+     */
+    static registerBagClass(BagClass) {
+        BagResolver._BagClass = BagClass;
     }
 
     /**
@@ -370,6 +460,9 @@ export class BagResolver {
         return null;
     }
 }
+
+// Registry for Bag class (set by Bag module to avoid circular import)
+BagResolver._BagClass = null;
 
 /**
  * BagCbResolver - Resolver that delegates to a callback function.

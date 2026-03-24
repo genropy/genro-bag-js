@@ -2217,3 +2217,6 @@ export class BagException extends Error {
         this.name = 'BagException';
     }
 }
+
+// Register Bag class with BagResolver for asBag conversion (avoids circular import)
+BagResolver.registerBagClass(Bag);
