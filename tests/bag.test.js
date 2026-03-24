@@ -1904,4 +1904,91 @@ describe('Bag', () => {
             assert.strictEqual(node.label, 'a');
         });
     });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('constructor with source', () => {
+        it('should initialize from dict', () => {
+            const bag = new Bag({ a: 1, b: 2 });
+            assert.strictEqual(bag.getItem('a'), 1);
+            assert.strictEqual(bag.getItem('b'), 2);
+        });
+
+        it('should work without source', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.length, 0);
+        });
+
+        it('should work with null', () => {
+            const bag = new Bag(null);
+            assert.strictEqual(bag.length, 0);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('toString (ASCII tree)', () => {
+        it('should format simple bag', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 'hello');
+            const s = bag.toString();
+            assert.ok(s.includes('a: 1'));
+            assert.ok(s.includes('b: "hello"'));
+        });
+
+        it('should use tree characters', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            const s = bag.toString();
+            assert.ok(s.includes('├── a'));
+            assert.ok(s.includes('└── b'));
+        });
+
+        it('should show nested bags', () => {
+            const bag = new Bag();
+            const inner = new Bag();
+            inner.setItem('x', 10);
+            bag.setItem('parent', inner);
+            const s = bag.toString();
+            assert.ok(s.includes('parent'));
+            assert.ok(s.includes('x: 10'));
+        });
+
+        it('should show attributes', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1, { color: 'red' });
+            const s = bag.toString();
+            assert.ok(s.includes('[color="red"]'));
+        });
+
+        it('should truncate long strings', () => {
+            const bag = new Bag();
+            bag.setItem('a', 'x'.repeat(100));
+            const s = bag.toString();
+            assert.ok(s.includes('...'));
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('fromJson with listJoiner', () => {
+        it('should join string arrays with separator', () => {
+            const json = JSON.stringify({ tags: ['a', 'b', 'c'] });
+            const bag = Bag.fromJson(json, ', ');
+            assert.strictEqual(bag.getItem('tags'), 'a, b, c');
+        });
+
+        it('should not join non-string arrays', () => {
+            const json = JSON.stringify({ nums: [1, 2, 3] });
+            const bag = Bag.fromJson(json, ', ');
+            // Non-string array → Bag with r_N keys
+            assert.ok(bag.getItem('nums') instanceof Bag);
+        });
+
+        it('should work without listJoiner', () => {
+            const json = JSON.stringify({ tags: ['a', 'b'] });
+            const bag = Bag.fromJson(json);
+            // Without joiner → Bag with r_N keys
+            assert.ok(bag.getItem('tags') instanceof Bag);
+        });
+    });
 });

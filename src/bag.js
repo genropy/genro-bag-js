@@ -14,7 +14,12 @@ import { BagCbResolver, BagResolver } from './resolver.js';
  * like 'a.b.c'.
  */
 export class Bag {
-    constructor() {
+    /**
+     * Create a new Bag.
+     *
+     * @param {Object} [source=null] - Optional dict to initialize from.
+     */
+    constructor(source = null) {
         this._nodes = new BagNodeContainer();
         this._backref = false;
         this._parent = null;
@@ -24,6 +29,10 @@ export class Bag {
         this._updSubscribers = {};
         this._insSubscribers = {};
         this._delSubscribers = {};
+
+        if (source) {
+            this.fillFrom(source);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1987,6 +1996,42 @@ export class Bag {
         return bag;
     }
 
+    /**
+     * Load Bag from URL. Auto-detects format from content-type.
+     *
+     * @param {string} url - HTTP/HTTPS URL to fetch.
+     * @param {Object} [options={}] - Fetch options.
+     * @param {number} [options.timeout=30] - Timeout in seconds.
+     * @returns {Promise<Bag>} Parsed content as Bag.
+     */
+    static async fromUrl(url, options = {}) {
+        const { timeout = 30 } = options;
+        const fetchOptions = {};
+        if (timeout) {
+            fetchOptions.signal = AbortSignal.timeout(timeout * 1000);
+        }
+
+        const response = await fetch(url, fetchOptions);
+        const contentType = response.headers.get('content-type') || '';
+        const text = await response.text();
+
+        if (contentType.includes('json')) {
+            return Bag.fromJson(text);
+        }
+        if (contentType.includes('xml')) {
+            return Bag.fromXml(text);
+        }
+        // Try to auto-detect from content
+        const trimmed = text.trim();
+        if (trimmed.startsWith('<')) {
+            return Bag.fromXml(text);
+        }
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            return Bag.fromJson(text);
+        }
+        throw new BagException(`Unsupported content-type: ${contentType}`);
+    }
+
     // -------------------------------------------------------------------------
     // JSON Serialization
     // -------------------------------------------------------------------------
@@ -2042,9 +2087,10 @@ export class Bag {
      * structures to Bag hierarchy.
      *
      * @param {string|Object|Array} source - JSON string, dict or list to parse.
+     * @param {string} [listJoiner=null] - If provided, join string arrays with this separator.
      * @returns {Bag} Deserialized Bag.
      */
-    static fromJson(source) {
+    static fromJson(source, listJoiner = null) {
         if (typeof source === 'string') {
             source = tytxDecode(source);
         }
@@ -2053,15 +2099,20 @@ export class Bag {
             source = { value: source };
         }
 
-        return Bag._fromJsonRecursive(source);
+        return Bag._fromJsonRecursive(source, listJoiner);
     }
 
     /**
      * Recursively convert JSON data to Bag (internal).
      * @private
      */
-    static _fromJsonRecursive(data) {
+    static _fromJsonRecursive(data, listJoiner = null) {
         if (Array.isArray(data)) {
+            // listJoiner: join string arrays into a single string
+            if (listJoiner !== null && data.every(item => typeof item === 'string')) {
+                return data.join(listJoiner);
+            }
+
             if (data.length === 0) {
                 return new Bag();
             }
@@ -2071,7 +2122,7 @@ export class Bag {
                 const result = new Bag();
                 for (const item of data) {
                     const label = item.label;
-                    const value = Bag._fromJsonRecursive(item.value);
+                    const value = Bag._fromJsonRecursive(item.value, listJoiner);
                     const attr = item.attr || {};
                     result.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
                 }
@@ -2081,7 +2132,7 @@ export class Bag {
             // Generic list -> Bag with r_N keys
             const result = new Bag();
             for (let n = 0; n < data.length; n++) {
-                result.setItem(`r_${n}`, Bag._fromJsonRecursive(data[n]));
+                result.setItem(`r_${n}`, Bag._fromJsonRecursive(data[n], listJoiner));
             }
             return result;
         }
@@ -2092,7 +2143,7 @@ export class Bag {
             }
             const result = new Bag();
             for (const [k, v] of Object.entries(data)) {
-                result.setItem(k, Bag._fromJsonRecursive(v));
+                result.setItem(k, Bag._fromJsonRecursive(v, listJoiner));
             }
             return result;
         }
@@ -2195,15 +2246,68 @@ export class Bag {
         return lines.join('\n');
     }
 
-    toString() {
-        const lines = [];
-        let idx = 0;
-        for (const node of this._nodes) {
-            const value = node.getValue(true);
-            const typeName = value === null ? 'null' : typeof value;
-            lines.push(`${idx} - (${typeName}) ${node.label}: ${value}`);
-            idx++;
+    /**
+     * Return ASCII tree representation of bag contents.
+     *
+     * @param {boolean} [isStatic=true] - If false, trigger resolvers.
+     * @param {Object} [_visited=null] - Internal: tracks visited nodes for circular refs.
+     * @param {string} [_prefix=''] - Internal: indentation prefix.
+     * @returns {string} ASCII tree string.
+     */
+    toString(isStatic = true, _visited = null, _prefix = '') {
+        if (!_visited) {
+            _visited = new Set();
         }
+
+        const lines = [];
+        const nodes = [...this._nodes];
+
+        for (let idx = 0; idx < nodes.length; idx++) {
+            const node = nodes[idx];
+            const isLast = idx === nodes.length - 1;
+            const value = node.getValue(isStatic);
+
+            // Format attributes
+            let attrStr = '';
+            const attrs = node.attr;
+            if (attrs && Object.keys(attrs).length > 0) {
+                const parts = Object.entries(attrs).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
+                attrStr = ` [${parts.join(', ')}]`;
+            }
+
+            // Tree characters
+            const branch = isLast ? '└── ' : '├── ';
+            const childPrefix = _prefix + (isLast ? '    ' : '│   ');
+
+            if (value && typeof value._htraverse === 'function') {
+                // Bag value
+                const nodeId = node;
+                if (_visited.has(nodeId)) {
+                    lines.push(`${_prefix}${branch}${node.label}${attrStr} → (circular ref)`);
+                } else {
+                    _visited.add(nodeId);
+                    lines.push(`${_prefix}${branch}${node.label}${attrStr}`);
+                    const inner = value.toString(isStatic, _visited, childPrefix);
+                    if (inner) {
+                        lines.push(inner);
+                    }
+                }
+            } else {
+                // Scalar value
+                let valueStr;
+                if (value === null || value === undefined) {
+                    valueStr = 'null';
+                } else if (typeof value === 'string' && value.length > 50) {
+                    valueStr = JSON.stringify(value.slice(0, 47) + '...');
+                } else if (typeof value === 'string') {
+                    valueStr = JSON.stringify(value);
+                } else {
+                    valueStr = String(value);
+                }
+                lines.push(`${_prefix}${branch}${node.label}: ${valueStr}${attrStr}`);
+            }
+        }
+
         return lines.join('\n');
     }
 }
