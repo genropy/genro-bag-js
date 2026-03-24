@@ -139,9 +139,18 @@ export class BagNodeContainer {
      * @param {string|number|null} [nodePosition='>'] - Position specification.
      * @param {Object} [attr=null] - Optional attributes.
      * @param {Object} [parentBag=null] - Parent Bag reference.
+     * @param {BagResolver} [resolver=null] - Resolver to attach to node.
+     * @param {boolean} [updattr=false] - If false, clear existing attributes first.
+     * @param {boolean} [removeNullAttributes=true] - If true, remove null values from attributes.
+     * @param {string} [reason=null] - Optional reason string for events.
+     * @param {boolean} [doTrigger=true] - If false, suppress events.
+     * @param {boolean} [fired=false] - If true, reset value to null after creation.
+     * @param {string} [nodeTag=null] - Semantic type tag for the node.
      * @returns {BagNode} The created or updated BagNode.
      */
-    set(label, value, nodePosition = '>', attr = null, parentBag = null) {
+    set(label, value, nodePosition = '>', attr = null, parentBag = null,
+        resolver = null, updattr = false, removeNullAttributes = true,
+        reason = null, doTrigger = true, fired = false, nodeTag = null) {
         // Parse query string from label (like Python)
         let queryString = null;
         if (label.includes('?')) {
@@ -173,28 +182,42 @@ export class BagNodeContainer {
         let node = this._dict[label];
 
         if (node) {
-            // Existing node
-            if (queryString) {
-                // Only set_attr, don't touch value
-                node.setAttr(attr);
-            } else {
-                // Update value
-                node.setValue(value);
-                if (attr) {
-                    node.setAttr(attr);
+            // Existing node — update
+            if (nodeTag) {
+                node.nodeTag = nodeTag;
+            }
+            if (resolver !== null) {
+                if (resolver === false) {
+                    node.resolver = null;
+                } else {
+                    node.resolver = resolver;
                 }
             }
+            if (queryString) {
+                // Only set_attr, don't touch value
+                node.setAttr(attr, doTrigger, updattr, removeNullAttributes);
+            } else {
+                // Update value with all propagated params
+                node.setValue(value, doTrigger, attr, updattr, removeNullAttributes, reason);
+            }
         } else {
-            // New node
-            node = new BagNode(parentBag, label, queryString ? null : value, attr);
+            // New node — use parentBag.nodeClass if available
+            const NodeClass = (parentBag && parentBag.nodeClass) ? parentBag.nodeClass : BagNode;
+            node = new NodeClass(parentBag, label, queryString ? null : value, attr,
+                resolver, nodeTag);
             const idx = this._parsePosition(nodePosition);
             this._dict[label] = node;
             this._list.splice(idx, 0, node);
 
             // Trigger insert event if backref enabled
-            if (parentBag && parentBag.backref) {
-                parentBag._onNodeInserted(node, idx);
+            if (doTrigger && parentBag && parentBag.backref) {
+                parentBag._onNodeInserted(node, idx, reason);
             }
+        }
+
+        // fired pattern: reset value after creation
+        if (fired) {
+            node.setValue(null, false);
         }
 
         return node;
