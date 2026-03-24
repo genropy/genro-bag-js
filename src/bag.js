@@ -1,9 +1,10 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagNodeContainer } from './bag-node-container.js';
+import { BagNode } from './bag-node.js';
 import { toTytx as tytxEncode, fromTytx as tytxDecode } from 'genro-tytx';
 import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
-import { BagCbResolver } from './resolver.js';
+import { BagCbResolver, BagResolver } from './resolver.js';
 
 /**
  * Bag - Hierarchical data container with path-based access.
@@ -47,6 +48,16 @@ export class Bag {
 
     get backref() {
         return Boolean(this._backref);
+    }
+
+    /**
+     * Node class used to create new nodes. Override in subclasses
+     * to use custom BagNode subclasses.
+     *
+     * @returns {Function} The BagNode constructor.
+     */
+    get nodeClass() {
+        return BagNode;
     }
 
     /**
@@ -229,9 +240,10 @@ export class Bag {
      * @param {string} label - Node label to look up.
      * @param {*} [defaultValue=null] - Value to return if label not found.
      * @param {boolean} [isStatic=true] - If true, don't trigger resolvers.
+     * @param {Object} [kwargs={}] - Additional kwargs passed to resolver.
      * @returns {*} The node's value if found, otherwise default.
      */
-    get(label, defaultValue = null, isStatic = true) {
+    get(label, defaultValue = null, isStatic = true, kwargs = {}) {
         if (!label) {
             return this;
         }
@@ -247,7 +259,7 @@ export class Bag {
         if (!node) {
             return defaultValue;
         }
-        return node.getValue(isStatic, queryString);
+        return node.getValue(isStatic, queryString, kwargs);
     }
 
     // -------------------------------------------------------------------------
@@ -260,9 +272,10 @@ export class Bag {
      * @param {string} path - Hierarchical path like 'a.b.c'.
      * @param {*} [defaultValue=null] - Value to return if path not found.
      * @param {boolean} [isStatic=false] - If true, don't trigger resolvers.
+     * @param {Object} [kwargs={}] - Additional kwargs passed to resolver at final path.
      * @returns {*} The value at the path if found, otherwise default.
      */
-    getItem(path, defaultValue = null, isStatic = false) {
+    getItem(path, defaultValue = null, isStatic = false, kwargs = {}) {
         if (!path) {
             return this;
         }
@@ -270,7 +283,7 @@ export class Bag {
         const [obj, label] = this._htraverse(path, false, isStatic);
 
         if (obj instanceof Bag) {
-            return obj.get(label, defaultValue, isStatic);
+            return obj.get(label, defaultValue, isStatic, kwargs);
         }
         return defaultValue;
     }
@@ -282,16 +295,31 @@ export class Bag {
     /**
      * Set value at a hierarchical path.
      *
+     * Resolver handling:
+     *   - resolver=null (default): throw if node already has a resolver
+     *   - resolver=false: remove existing resolver and set value
+     *   - resolver=BagResolver: replace resolver
+     *
      * @param {string} path - Hierarchical path like 'a.b.c'.
      * @param {*} value - Value to set at the path.
      * @param {Object} [attr=null] - Optional attributes to set on the node.
      * @param {string|number|null} [nodePosition='>'] - Position for new nodes.
+     * @param {boolean} [updattr=false] - If false, clear existing attributes first.
+     * @param {boolean} [removeNullAttributes=true] - If true, remove null values from attributes.
+     * @param {string} [reason=null] - Reason for the change (for events).
+     * @param {boolean} [fired=false] - If true, reset value to null after setting.
+     * @param {boolean} [doTrigger=true] - If false, suppress events.
+     * @param {*} [resolver=null] - Resolver handling for existing nodes.
+     * @param {string} [nodeTag=null] - Semantic type tag for the node.
      * @returns {BagNode} The created or updated BagNode.
      */
-    setItem(path, value, attr = null, nodePosition = '>') {
+    setItem(path, value, attr = null, nodePosition = '>', updattr = false,
+            removeNullAttributes = true, reason = null, fired = false,
+            doTrigger = true, resolver = null, nodeTag = null) {
         const [obj, label] = this._htraverse(path, true);
 
-        return obj._nodes.set(label, value, nodePosition, attr, obj);
+        return obj._nodes.set(label, value, nodePosition, attr, obj,
+            resolver, updattr, removeNullAttributes, reason, doTrigger, fired, nodeTag);
     }
 
     // -------------------------------------------------------------------------
@@ -399,17 +427,29 @@ export class Bag {
     /**
      * Get the BagNode at a path (not its value).
      *
-     * @param {string} path - Hierarchical path like 'a.b.c'.
+     * @param {string|number|null} path - Hierarchical path like 'a.b.c', integer index, or null.
      * @param {boolean} [isStatic=true] - If true, don't trigger resolvers.
+     * @param {boolean} [autocreate=false] - If true, create node if not found.
+     * @param {*} [defaultValue=null] - Default value for autocreated node.
      * @returns {BagNode|null} The BagNode if found, null otherwise.
      */
-    getNode(path, isStatic = true) {
-        if (!path) {
-            return null;
+    getNode(path, isStatic = true, autocreate = false, defaultValue = null) {
+        if (path === null || path === undefined || path === '') {
+            return this.parentNode;
         }
-        const [obj, label] = this._htraverse(path, false, isStatic);
+        if (typeof path === 'number') {
+            return this._nodes.get(path);
+        }
+        const [obj, label] = this._htraverse(path, autocreate, isStatic);
         if (obj instanceof Bag && label) {
-            return obj._nodes.get(label);
+            const node = obj._nodes.get(label);
+            if (node) {
+                return node;
+            }
+            if (autocreate) {
+                obj._nodes.set(label, defaultValue, '>', null, obj);
+                return obj._nodes.get(label);
+            }
         }
         return null;
     }

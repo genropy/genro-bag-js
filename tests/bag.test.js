@@ -2,8 +2,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { Bag } from '../src/index.js';
-import { BagResolver } from '../src/resolver.js';
+import { Bag, BagNode } from '../src/index.js';
+import { BagResolver, BagCbResolver } from '../src/resolver.js';
 
 describe('Bag', () => {
     describe('setItem and getItem', () => {
@@ -1810,6 +1810,98 @@ describe('Bag', () => {
 
             assert.strictEqual(bag.has('a.b.c'), true);
             assert.ok(bag.getResolver('a.b.c') !== null);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('nodeClass', () => {
+        it('should return BagNode by default', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.nodeClass, BagNode);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('setItem with resolver param', () => {
+        it('should pass resolver to new node', () => {
+            const bag = new Bag();
+            const resolver = new BagCbResolver({ callback: () => 99 });
+            bag.setItem('x', null, null, '>', false, true, null, false, true, resolver);
+            assert.strictEqual(bag.getNode('x').resolver, resolver);
+        });
+
+        it('should pass nodeTag to new node', () => {
+            const bag = new Bag();
+            bag.setItem('x', 42, null, '>', false, true, null, false, true, null, 'myTag');
+            assert.strictEqual(bag.getNode('x').nodeTag, 'myTag');
+        });
+
+        it('should remove resolver with resolver=false', () => {
+            const bag = new Bag();
+            const resolver = new BagCbResolver({ callback: () => 99 });
+            bag.setItem('x', null, null, '>', false, true, null, false, true, resolver);
+            bag.setItem('x', 42, null, '>', false, true, null, false, true, false);
+            assert.strictEqual(bag.getNode('x').resolver, null);
+            assert.strictEqual(bag.getItem('x'), 42);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('setItem with fired', () => {
+        it('should reset value to null after setting', () => {
+            const bag = new Bag();
+            bag.setItem('event', 'click', null, '>', false, true, null, true);
+            assert.strictEqual(bag.getItem('event'), null);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('getItem with kwargs', () => {
+        it('should pass kwargs to resolver', () => {
+            const bag = new Bag();
+            const resolver = new BagCbResolver({
+                callback: (kw) => kw.x + kw.y
+            });
+            bag.setItem('calc', null, null, '>', false, true, null, false, true, resolver);
+            const result = bag.getItem('calc', null, false, { x: 10, y: 20 });
+            assert.strictEqual(result, 30);
+        });
+    });
+
+    // Aligned with Python genro-bag 0.11.0
+    describe('getNode with autocreate', () => {
+        it('should return null for missing path without autocreate', () => {
+            const bag = new Bag();
+            assert.strictEqual(bag.getNode('nonexistent'), null);
+        });
+
+        it('should create node with autocreate=true', () => {
+            const bag = new Bag();
+            const node = bag.getNode('newnode', true, true);
+            assert.ok(node !== null);
+            assert.strictEqual(node.label, 'newnode');
+            assert.strictEqual(node.staticValue, null);
+        });
+
+        it('should create node with default value', () => {
+            const bag = new Bag();
+            const node = bag.getNode('newnode', true, true, 42);
+            assert.strictEqual(node.staticValue, 42);
+        });
+
+        it('should return parentNode for null/empty path', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            assert.strictEqual(bag.getNode(null), bag.parentNode);
+            assert.strictEqual(bag.getNode(''), bag.parentNode);
+        });
+
+        it('should accept integer index', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setItem('b', 2);
+            const node = bag.getNode(0);
+            assert.strictEqual(node.label, 'a');
         });
     });
 });
