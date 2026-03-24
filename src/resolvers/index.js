@@ -5,3 +5,4 @@
  */
 
 export { UrlResolver } from './UrlResolver.js';
+export { UuidResolver } from './UuidResolver.js';
