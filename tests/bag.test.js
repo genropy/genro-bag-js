@@ -1991,4 +1991,53 @@ describe('Bag', () => {
             assert.ok(bag.getItem('tags') instanceof Bag);
         });
     });
+
+    // Aligned with Python genro-bag 0.11.0 (commit e6011b3)
+    describe('relativePath', () => {
+        it('should return path for direct child', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('item', 'value');
+            const node = bag.getNode('item');
+            assert.strictEqual(bag.relativePath(node), 'item');
+        });
+
+        it('should return path for nested node', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('a.b.c', 'value');
+            const nodeA = bag.getNode('a');
+            const nodeB = nodeA.value.getNode('b');
+            const nodeC = nodeB.value.getNode('c');
+            assert.strictEqual(bag.relativePath(nodeC), 'a.b.c');
+        });
+
+        it('should return path from intermediate bag', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('a.b.c', 'value');
+            const intermediate = bag.getItem('a');
+            const nodeB = intermediate.getNode('b');
+            const nodeC = nodeB.value.getNode('c');
+            assert.strictEqual(intermediate.relativePath(nodeC), 'b.c');
+        });
+
+        it('should work for direct child without backref', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+            const node = bag.getNode('item');
+            assert.strictEqual(bag.relativePath(node), 'item');
+        });
+
+        it('should return null for unrelated node', () => {
+            const bag1 = new Bag();
+            bag1.setBackref();
+            bag1.setItem('a', 'value');
+            const bag2 = new Bag();
+            bag2.setBackref();
+            bag2.setItem('b', 'value');
+            const nodeB = bag2.getNode('b');
+            assert.strictEqual(bag1.relativePath(nodeB), null);
+        });
+    });
 });

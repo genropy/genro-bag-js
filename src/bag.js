@@ -89,6 +89,30 @@ export class Bag {
         return null;
     }
 
+    /**
+     * Get dot-separated path from this Bag to a descendant node.
+     *
+     * Walks up from the node to this Bag collecting labels.
+     * Requires backref mode enabled.
+     *
+     * @param {BagNode} node - A descendant BagNode.
+     * @returns {string|null} The relative path, or null if not a descendant.
+     */
+    relativePath(node) {
+        const parts = [];
+        let current = node;
+        while (current !== null) {
+            if (current.parentBag === this) {
+                parts.push(current.label);
+                parts.reverse();
+                return parts.join('.');
+            }
+            parts.push(current.label);
+            current = current.parentNode;
+        }
+        return null;
+    }
+
     get length() {
         return this._nodes.length;
     }
