@@ -1252,17 +1252,37 @@ export class Bag {
      *
      * Equivalent to Python's `__contains__` / `in` operator.
      *
-     * @param {string|BagNode} what - Path to check, or a BagNode to check if it's in this Bag.
-     * @returns {boolean} True if the path/node exists, false otherwise.
+     * With the `?attr` query syntax it checks the existence of the named
+     * attribute on the target node; `?a&b` requires every named attribute
+     * to be present. The check is static: it does not trigger resolvers
+     * along the path.
+     *
+     * @param {string|BagNode} what - Path to check, optionally with a
+     *   `?attr` or `?a&b` suffix, or a BagNode to check if it's in this Bag.
+     * @returns {boolean} True if the path/node (and named attributes if
+     *   provided) exists, false otherwise.
      *
      * @example
      * bag.setItem('a.b', 1);
-     * bag.has('a.b')   // true
-     * bag.has('a.c')   // false
+     * bag.has('a.b')          // true
+     * bag.has('a.c')          // false
+     * bag.has('a.b?color')    // true if node a.b has attribute 'color'
+     * bag.has('a.b?x&y')      // true only if both 'x' and 'y' are present
      */
     has(what) {
         if (typeof what === 'string') {
-            return this.getNode(what) !== null;
+            let queryString = null;
+            if (what.includes('?')) {
+                [what, queryString] = what.split('?', 2);
+            }
+            const node = this.getNode(what);
+            if (node === null) {
+                return false;
+            }
+            if (queryString === null) {
+                return true;
+            }
+            return queryString.split('&').every(a => a in node.attr);
         } else if (what && what.label !== undefined) {
             // Assume it's a BagNode-like object
             return [...this._nodes].includes(what);

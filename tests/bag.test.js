@@ -1723,6 +1723,49 @@ describe('Bag', () => {
 
             assert.strictEqual(bag.has('anything'), false);
         });
+
+        it('should check single attribute with ?attr syntax', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+            bag.setAttr('item', { color: 'red' });
+
+            assert.strictEqual(bag.has('item?color'), true);
+            assert.strictEqual(bag.has('item?size'), false);
+        });
+
+        it('should require all attributes with ?a&b (AND semantics)', () => {
+            const bag = new Bag();
+            bag.setItem('item', 'value');
+            bag.setAttr('item', { color: 'red', size: 10 });
+
+            assert.strictEqual(bag.has('item?color&size'), true);
+            assert.strictEqual(bag.has('item?color&weight'), false);
+        });
+
+        it('should return false for ?attr on non-existing node', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+
+            assert.strictEqual(bag.has('missing?color'), false);
+        });
+
+        it('should check ?attr on nested path', () => {
+            const bag = new Bag();
+            bag.setItem('a.b.c', 'value');
+            bag.setAttr('a.b.c', { tag: 'leaf' });
+
+            assert.strictEqual(bag.has('a.b.c?tag'), true);
+            assert.strictEqual(bag.has('a.b.c?other'), false);
+        });
+
+        it('should not trigger resolver (static check)', () => {
+            const bag = new Bag();
+            let called = false;
+            bag.setCallbackItem('computed', () => { called = true; return 42; });
+
+            assert.strictEqual(bag.has('computed'), true);
+            assert.strictEqual(called, false);
+        });
     });
 
     describe('getResolver() method', () => {
