@@ -251,9 +251,9 @@ export class Bag {
                 pathlist.shift();
                 curr = value;
             } else if (writeMode) {
-                // Create intermediate Bag
+                // Promote scalar to intermediate Bag
                 const newBag = new Bag();
-                node.setValue(newBag);
+                node.setValue(newBag, true, null, true, true, 'autocreate');
                 pathlist.shift();
                 curr = newBag;
             } else {
@@ -276,7 +276,7 @@ export class Bag {
                 throw new BagException('Not existing index in #n syntax');
             }
             const newBag = new Bag();
-            curr._nodes.set(label, newBag, '>', null, curr);
+            curr._nodes.set(label, newBag, '>', null, curr, null, false, true, 'autocreate');
             curr = newBag;
         }
 

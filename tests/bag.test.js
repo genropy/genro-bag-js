@@ -734,6 +734,57 @@ describe('Bag', () => {
         });
     });
 
+    describe('autocreate reason', () => {
+        it('should tag intermediate containers with reason=autocreate', () => {
+            const bag = new Bag();
+            const events = [];
+            bag.subscribe('test', {
+                insert: (e) => events.push({ label: e.node.label, reason: e.reason })
+            });
+
+            // x and y are auto-created intermediate containers, z is the leaf
+            bag.setItem('x.y.z', 1);
+
+            const byLabel = Object.fromEntries(events.map(e => [e.label, e.reason]));
+            assert.strictEqual(byLabel.x, 'autocreate');
+            assert.strictEqual(byLabel.y, 'autocreate');
+            // the leaf carries no autocreate reason
+            assert.strictEqual(byLabel.z, null);
+        });
+
+        it('should tag scalar->container promotion with reason=autocreate', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);   // a is a scalar
+
+            const events = [];
+            bag.subscribe('test', {
+                update: (e) => events.push({ label: e.node.label, reason: e.reason })
+            });
+
+            // writing a.b promotes scalar a to a container
+            bag.setItem('a.b', 2);
+
+            const promotion = events.find(e => e.label === 'a');
+            assert.ok(promotion, 'promotion of a should emit an update event');
+            assert.strictEqual(promotion.reason, 'autocreate');
+        });
+
+        it('should not pollute pathlist with the reason value', () => {
+            const bag = new Bag();
+            const events = [];
+            bag.subscribe('test', {
+                insert: (e) => events.push({ label: e.node.label, pathlist: e.pathlist })
+            });
+
+            bag.setItem('x.y', 1);
+
+            // pathlist must be an array, never the 'autocreate' string
+            for (const e of events) {
+                assert.ok(Array.isArray(e.pathlist), `pathlist for ${e.label} must be an array`);
+            }
+        });
+    });
+
     describe('walk', () => {
         it('should walk flat bag', () => {
             const bag = new Bag();

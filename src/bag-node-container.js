@@ -257,9 +257,11 @@ export class BagNodeContainer {
             this._dict[label] = node;
             this._list.splice(idx, 0, node);
 
-            // Trigger insert event if backref enabled
+            // Trigger insert event if backref enabled.
+            // reason is the 4th argument (3rd is pathlist) — passing it in the
+            // wrong slot would corrupt the subscriber's pathlist.
             if (doTrigger && parentBag && parentBag.backref) {
-                parentBag._onNodeInserted(node, idx, reason);
+                parentBag._onNodeInserted(node, idx, null, reason);
             }
         }
 
