@@ -130,7 +130,8 @@ export class BagNodeContainer {
     /**
      * Set or create a BagNode with optional position.
      *
-     * Supports ?attr syntax to set attributes instead of value:
+     * Supports ?attr syntax to set attributes instead of value (always
+     * merged with existing attributes, regardless of `updattr`):
      *   - 'label?myattr' → sets attribute 'myattr' to value
      *   - 'label?x&y&z' → sets attributes from tuple (value must be array with matching length)
      *
@@ -194,8 +195,11 @@ export class BagNodeContainer {
                 }
             }
             if (queryString) {
-                // Only set_attr, don't touch value
-                node.setAttr(attr, doTrigger, updattr, removeNullAttributes);
+                // Only set_attr, don't touch value. Force merge (updattr=true):
+                // the ?attr query syntax is an alias of setAttr for the named
+                // attribute(s) and must preserve the other attributes,
+                // regardless of the updattr argument (aligns with Python #56).
+                node.setAttr(attr, doTrigger, true, removeNullAttributes);
             } else {
                 // Update value with all propagated params
                 node.setValue(value, doTrigger, attr, updattr, removeNullAttributes, reason);

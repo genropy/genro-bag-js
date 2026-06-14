@@ -224,4 +224,39 @@ describe('BagNodeContainer', () => {
             assert.strictEqual(node.getAttr('b'), null);
         });
     });
+
+    describe('set with ?attr query syntax', () => {
+        it('should merge single attribute on existing node, preserving others', () => {
+            const c = new BagNodeContainer();
+            c.set('x', 'value', '>', { a: 1, b: 2 });
+            c.set('x?b', 99);
+            const node = c.get('x');
+            // ?attr is an alias of setAttr: must merge, not replace
+            assert.strictEqual(node.getAttr('a'), 1);
+            assert.strictEqual(node.getAttr('b'), 99);
+            // value must be untouched
+            assert.strictEqual(node.getValue(), 'value');
+        });
+
+        it('should merge even when updattr=false is passed', () => {
+            const c = new BagNodeContainer();
+            c.set('x', 'value', '>', { a: 1, b: 2 });
+            // updattr=false (7th positional) must NOT cause attribute replacement
+            // in the ?attr branch
+            c.set('x?b', 99, '>', null, null, null, false);
+            const node = c.get('x');
+            assert.strictEqual(node.getAttr('a'), 1);
+            assert.strictEqual(node.getAttr('b'), 99);
+        });
+
+        it('should set multiple attributes from tuple, preserving others', () => {
+            const c = new BagNodeContainer();
+            c.set('x', 'value', '>', { a: 1 });
+            c.set('x?b&c', [2, 3]);
+            const node = c.get('x');
+            assert.strictEqual(node.getAttr('a'), 1);
+            assert.strictEqual(node.getAttr('b'), 2);
+            assert.strictEqual(node.getAttr('c'), 3);
+        });
+    });
 });
