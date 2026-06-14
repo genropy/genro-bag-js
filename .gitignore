@@ -28,3 +28,8 @@ npm-debug.log*
 
 # Temp
 temp/
+
+# Python (cross-language tests)
+__pycache__/
+*.pyc
+.pytest_cache/
