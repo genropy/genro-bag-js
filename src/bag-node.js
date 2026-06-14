@@ -121,11 +121,14 @@ export class BagNode {
      * @param {*} value - The value to set.
      * @param {boolean} [trigger=true] - If true, notify subscribers of the change.
      * @param {Object} [attributes=null] - Optional attributes to set along with value.
-     * @param {boolean} [updattr=true] - If false, clear existing attributes first.
+     * @param {boolean|null} [updattr=null] - If falsy (default null), replace
+     *   existing attributes; if true, merge. Note: unlike setAttr called
+     *   directly (which merges by default), setValue replaces by default,
+     *   matching Python's _updattr=None.
      * @param {boolean} [removeNullAttributes=true] - If true, remove null values from attributes.
      * @param {string} [reason=null] - Optional reason string for the trigger.
      */
-    setValue(value, trigger = true, attributes = null, updattr = true, removeNullAttributes = true, reason = null) {
+    setValue(value, trigger = true, attributes = null, updattr = null, removeNullAttributes = true, reason = null) {
         // Handle BagResolver passed as value
         if (value instanceof BagResolver) {
             this.resolver = value;

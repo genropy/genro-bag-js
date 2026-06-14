@@ -45,6 +45,14 @@ describe('BagNode', () => {
             node.setValue(42, true, { c: 3 }, false);
             assert.deepStrictEqual(node.attr, { c: 3 });
         });
+
+        it('should replace attributes by default (updattr omitted)', () => {
+            // setValue default replaces attributes (Python _updattr=None -> replace),
+            // unlike setAttr called directly which merges by default.
+            const node = new BagNode(null, 'test', null, { a: 1, b: 2 });
+            node.setValue(42, true, { c: 3 });
+            assert.deepStrictEqual(node.attr, { c: 3 });
+        });
     });
 
     describe('setAttr', () => {
@@ -220,13 +228,15 @@ describe('BagNode', () => {
             const events = [];
             node.subscribe('test', (e) => events.push(e));
 
+            // setValue replaces attributes by default, so 'a' is removed and
+            // 'b' is added — the diff reports both (matches Python).
             node.setValue(20, true, { b: 2 });
 
             assert.strictEqual(events.length, 1);
             assert.strictEqual(events[0].evt, 'upd_value_attr');
             assert.deepStrictEqual(events[0].info, {
                 oldvalue: 10,
-                attrs_diff: { b: { old: null, new: 2 } }
+                attrs_diff: { a: { old: 1, new: null }, b: { old: null, new: 2 } }
             });
         });
 
