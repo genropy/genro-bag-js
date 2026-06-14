@@ -430,6 +430,49 @@ describe('Bag', () => {
         });
     });
 
+    describe('inner #parent traversal', () => {
+        const makeNested = () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('a.b.x', 1);   // a and a.b are Bags
+            bag.setItem('a.y', 9);     // y is sibling of b inside a
+            return bag;
+        };
+
+        it('should resolve #parent in the middle of a read path', () => {
+            const bag = makeNested();
+            // from a.b walk up to a, then read y
+            assert.strictEqual(bag.getItem('a.b.#parent.y'), 9);
+        });
+
+        it('should resolve the ../ alias of inner #parent', () => {
+            const bag = makeNested();
+            assert.strictEqual(bag.getItem('a.b.../y'), 9);
+        });
+
+        it('should resolve inner #parent in write mode', () => {
+            const bag = makeNested();
+            // from a.b walk up to a, then write z
+            bag.setItem('a.b.#parent.z', 42);
+            assert.strictEqual(bag.getItem('a.z'), 42);
+        });
+
+        it('should break (return null) when #parent has no parent', () => {
+            const bag = new Bag();           // no backref, no parent
+            bag.setItem('a.b', 1);
+            assert.strictEqual(bag.getItem('a.#parent.b'), null);
+        });
+
+        it('should chain multiple inner #parent segments', () => {
+            const bag = new Bag();
+            bag.setBackref();
+            bag.setItem('a.b.c.x', 1);       // a, a.b, a.b.c are Bags
+            bag.setItem('a.w', 7);
+            // from a.b.c walk up twice to a, then read w
+            assert.strictEqual(bag.getItem('a.b.c.#parent.#parent.w'), 7);
+        });
+    });
+
     describe('fullpath', () => {
         it('should return null for root bag', () => {
             const bag = new Bag();

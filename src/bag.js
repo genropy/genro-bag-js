@@ -201,6 +201,11 @@ export class Bag {
     /**
      * Traverse a hierarchical path.
      *
+     * A `#parent` segment (also the `../` alias, expanded by _htraverseBefore)
+     * walks up to the parent Bag. It is handled both as a leading segment and
+     * inside the path; it requires backref/parent to be set, otherwise the
+     * traversal breaks (read → null; write → stops short).
+     *
      * @param {string|Array} path - Path as dot-separated string or array.
      * @param {boolean} [writeMode=false] - If true, create intermediate Bags.
      * @param {boolean} [isStatic=true] - If true, don't trigger resolvers.
@@ -219,6 +224,21 @@ export class Bag {
         // Traverse path segments
         while (pathlist.length > 1 && curr instanceof Bag) {
             const segment = pathlist[0];
+
+            // Inner #parent: walk up to the parent Bag, same behaviour as
+            // _htraverseBefore applies for leading segments. Without this
+            // branch the lookup below would fail (no node named '#parent')
+            // and traversal would break. Requires backref/parent to be set;
+            // otherwise it breaks (safe no-op). Aligns with Python #58.
+            if (segment === '#parent') {
+                if (curr.parent === null || curr.parent === undefined) {
+                    break;
+                }
+                pathlist.shift();
+                curr = curr.parent;
+                continue;
+            }
+
             const node = curr._nodes.get(segment);
 
             if (!node) {
