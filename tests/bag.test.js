@@ -249,22 +249,20 @@ describe('Bag', () => {
             assert.deepStrictEqual(bag.keys(), ['a', 'new', 'b', 'c']);
         });
 
-        it('should append at end for missing label reference', () => {
+        it('should throw on missing label reference (fail-fast)', () => {
             const bag = new Bag();
             bag.setItem('a', 1);
             bag.setItem('b', 2);
-            bag.setItem('new', 'X', null, '>missing');
 
-            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'new']);
+            assert.throws(() => bag.setItem('new', 'X', null, '>missing'), /not found/);
         });
 
-        it('should append at end for unknown position syntax', () => {
+        it('should throw on unknown position syntax (fail-fast)', () => {
             const bag = new Bag();
             bag.setItem('a', 1);
             bag.setItem('b', 2);
-            bag.setItem('new', 'X', null, 'unknown');
 
-            assert.deepStrictEqual(bag.keys(), ['a', 'b', 'new']);
+            assert.throws(() => bag.setItem('new', 'X', null, 'unknown'), /unrecognized syntax/);
         });
     });
 

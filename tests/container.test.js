@@ -225,6 +225,61 @@ describe('BagNodeContainer', () => {
         });
     });
 
+    describe('_parsePosition fail-fast', () => {
+        const makeContainer = () => {
+            const c = new BagNodeContainer();
+            c.set('a', 1);
+            c.set('b', 2);
+            c.set('c', 3);
+            return c;
+        };
+
+        it('should throw on #n with non-integer index', () => {
+            const c = makeContainer();
+            assert.throws(() => c.set('x', 9, '#abc'), /not an integer/);
+        });
+
+        it('should throw on #n with negative index', () => {
+            const c = makeContainer();
+            assert.throws(() => c.set('x', 9, '#-1'), /negative index not allowed/);
+        });
+
+        it('should throw on <label when label not found', () => {
+            const c = makeContainer();
+            assert.throws(() => c.set('x', 9, '<missing'), /not found/);
+        });
+
+        it('should throw on >label when label not found', () => {
+            const c = makeContainer();
+            assert.throws(() => c.set('x', 9, '>missing'), /not found/);
+        });
+
+        it('should throw on unrecognized syntax', () => {
+            const c = makeContainer();
+            assert.throws(() => c.set('x', 9, '@foo'), /unrecognized syntax/);
+        });
+
+        it('should support negative integer index Python-style', () => {
+            const c = makeContainer();
+            // -1 = before last element (insert at index len-1 = 2)
+            assert.strictEqual(c._parsePosition(-1), 2);
+            assert.strictEqual(c._parsePosition(-2), 1);
+            // out-of-range negative clamps to 0
+            assert.strictEqual(c._parsePosition(-99), 0);
+        });
+
+        it('should clamp #n above length to length', () => {
+            const c = makeContainer();
+            assert.strictEqual(c._parsePosition('#10'), 3);
+        });
+
+        it('should resolve <label and >label on existing labels', () => {
+            const c = makeContainer();
+            assert.strictEqual(c._parsePosition('<b'), 1);
+            assert.strictEqual(c._parsePosition('>b'), 2);
+        });
+    });
+
     describe('set with ?attr query syntax', () => {
         it('should merge single attribute on existing node, preserving others', () => {
             const c = new BagNodeContainer();

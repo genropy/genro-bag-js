@@ -53,16 +53,36 @@ export class BagNodeContainer {
     /**
      * Parse position syntax and return insertion index.
      *
+     * Supported formats:
+     *   - null or '>': append at end
+     *   - '<': insert at beginning
+     *   - int n: insert at index n. Negative values count from the end
+     *     (Python-style: -1 = before last). Out-of-range values clamp to [0, len].
+     *   - '#n': insert at non-negative index n (clamped to len)
+     *   - '<label': insert before node with given label
+     *   - '>label': insert after node with given label
+     *   - '<#n' / '>#n': insert before/after non-negative index n
+     *
+     * Fails fast on malformed input instead of silently appending, so a bad
+     * position is reported to the caller (aligns with Python _parse_position).
+     *
      * @param {string|number|null} position - Position specification.
-     * @returns {number} Index where to insert.
+     * @returns {number} Index where to insert (always valid for splice).
+     * @throws {Error} If the string position is malformed (e.g. '#abc', '#-1',
+     *   '@foo') or references a non-existent label (e.g. '<missing').
      */
     _parsePosition(position) {
+        const n = this._list.length;
+
         if (position === null || position === undefined || position === '>') {
-            return this._list.length;
+            return n;
         }
 
         if (typeof position === 'number') {
-            return Math.max(0, Math.min(position, this._list.length));
+            if (position < 0) {
+                position = n + position;
+            }
+            return Math.max(0, Math.min(position, n));
         }
 
         if (position === '<') {
@@ -70,40 +90,64 @@ export class BagNodeContainer {
         }
 
         if (position.startsWith('#')) {
-            try {
-                return Math.max(0, Math.min(parseInt(position.slice(1), 10), this._list.length));
-            } catch {
-                return this._list.length;
-            }
+            const idx = this._parseSharpIndex(position.slice(1), position);
+            return Math.min(idx, n);
         }
 
         if (position.startsWith('<')) {
             const ref = position.slice(1);
             if (ref.startsWith('#')) {
-                try {
-                    return Math.max(0, Math.min(parseInt(ref.slice(1), 10), this._list.length));
-                } catch {
-                    return this._list.length;
-                }
+                const idx = this._parseSharpIndex(ref.slice(1), position);
+                return Math.min(idx, n);
             }
-            const idx = this.index(ref);
-            return idx >= 0 ? idx : this._list.length;
+            const labelIdx = this.index(ref);
+            if (labelIdx < 0) {
+                throw new Error(
+                    `Invalid node_position '${position}': label '${ref}' not found`
+                );
+            }
+            return labelIdx;
         }
 
         if (position.startsWith('>')) {
             const ref = position.slice(1);
             if (ref.startsWith('#')) {
-                try {
-                    return Math.max(0, Math.min(parseInt(ref.slice(1), 10) + 1, this._list.length));
-                } catch {
-                    return this._list.length;
-                }
+                const idx = this._parseSharpIndex(ref.slice(1), position);
+                return Math.min(idx + 1, n);
             }
-            const idx = this.index(ref);
-            return idx >= 0 ? idx + 1 : this._list.length;
+            const labelIdx = this.index(ref);
+            if (labelIdx < 0) {
+                throw new Error(
+                    `Invalid node_position '${position}': label '${ref}' not found`
+                );
+            }
+            return labelIdx + 1;
         }
 
-        return this._list.length;
+        throw new Error(`Invalid node_position '${position}': unrecognized syntax`);
+    }
+
+    /**
+     * Parse a non-negative integer from '#n' syntax.
+     *
+     * @param {string} raw - The part after '#' (e.g. '3' from '#3').
+     * @param {string} original - Full position string for error messages.
+     * @returns {number} The parsed non-negative integer.
+     * @throws {Error} If raw is not a non-negative integer.
+     */
+    _parseSharpIndex(raw, original) {
+        if (!/^-?\d+$/.test(raw)) {
+            throw new Error(
+                `Invalid node_position '${original}': '${raw}' is not an integer`
+            );
+        }
+        const idx = parseInt(raw, 10);
+        if (idx < 0) {
+            throw new Error(
+                `Invalid node_position '${original}': negative index not allowed in '#n' syntax`
+            );
+        }
+        return idx;
     }
 
     /**
