@@ -198,11 +198,11 @@ describe('BagNode', () => {
 
             assert.strictEqual(events.length, 1);
             assert.strictEqual(events[0].evt, 'upd_value');
-            assert.strictEqual(events[0].info, 10); // oldvalue
+            assert.deepStrictEqual(events[0].info, { oldvalue: 10 });
             assert.strictEqual(events[0].node, node);
         });
 
-        it('should call subscriber on setAttr', () => {
+        it('should call subscriber on setAttr with attrs_diff', () => {
             const node = new BagNode(null, 'test', 10, { a: 1 });
             const events = [];
             node.subscribe('test', (e) => events.push(e));
@@ -211,7 +211,33 @@ describe('BagNode', () => {
 
             assert.strictEqual(events.length, 1);
             assert.strictEqual(events[0].evt, 'upd_attrs');
-            assert.deepStrictEqual(events[0].info, ['b']); // changed attrs
+            // info carries the diff dict, added attr has old=null
+            assert.deepStrictEqual(events[0].info, { attrs_diff: { b: { old: null, new: 2 } } });
+        });
+
+        it('should call subscriber on combined value+attr with upd_value_attr', () => {
+            const node = new BagNode(null, 'test', 10, { a: 1 });
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+
+            node.setValue(20, true, { b: 2 });
+
+            assert.strictEqual(events.length, 1);
+            assert.strictEqual(events[0].evt, 'upd_value_attr');
+            assert.deepStrictEqual(events[0].info, {
+                oldvalue: 10,
+                attrs_diff: { b: { old: null, new: 2 } }
+            });
+        });
+
+        it('should not emit upd_attrs when attribute diff is empty', () => {
+            const node = new BagNode(null, 'test', 10, { a: 1 });
+            const events = [];
+            node.subscribe('test', (e) => events.push(e));
+
+            node.setAttr({ a: 1 }); // same value, no change
+
+            assert.strictEqual(events.length, 0);
         });
 
         it('should not call subscriber when trigger=false', () => {
@@ -244,6 +270,28 @@ describe('BagNode', () => {
             node.setValue(20);
 
             assert.strictEqual(events.length, 0);
+        });
+    });
+
+    describe('_buildAttrDiff', () => {
+        it('should report added, removed and modified, omitting unchanged', () => {
+            const node = new BagNode(null, 'test');
+            const diff = node._buildAttrDiff(
+                { keep: 1, mod: 'a', gone: 9 },
+                { keep: 1, mod: 'b', added: 7 }
+            );
+            assert.deepStrictEqual(diff, {
+                mod: { old: 'a', new: 'b' },
+                gone: { old: 9, new: null },
+                added: { old: null, new: 7 }
+            });
+            // unchanged key must be omitted
+            assert.ok(!('keep' in diff));
+        });
+
+        it('should return empty object when nothing changed', () => {
+            const node = new BagNode(null, 'test');
+            assert.deepStrictEqual(node._buildAttrDiff({ a: 1 }, { a: 1 }), {});
         });
     });
 

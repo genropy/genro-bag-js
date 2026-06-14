@@ -608,7 +608,9 @@ describe('Bag', () => {
 
             const events = [];
             bag.subscribe('test', {
-                update: (e) => events.push({ evt: e.evt, label: e.node.label, oldvalue: e.oldvalue })
+                update: (e) => events.push({
+                    evt: e.evt, label: e.node.label, oldvalue: e.oldvalue, attrs_diff: e.attrs_diff
+                })
             });
 
             bag.setItem('a', 2);
@@ -617,6 +619,25 @@ describe('Bag', () => {
             assert.strictEqual(events[0].evt, 'upd_value');
             assert.strictEqual(events[0].label, 'a');
             assert.strictEqual(events[0].oldvalue, 1);
+            // pure value update carries no attrs_diff
+            assert.strictEqual(events[0].attrs_diff, null);
+        });
+
+        it('should carry attrs_diff on update callback for attribute changes', () => {
+            const bag = new Bag();
+            bag.setItem('a', 1);
+            bag.setAttr('a', { color: 'red' });
+
+            const events = [];
+            bag.subscribe('test', {
+                update: (e) => events.push({ evt: e.evt, attrs_diff: e.attrs_diff })
+            });
+
+            bag.setAttr('a', { color: 'blue' });
+
+            assert.strictEqual(events.length, 1);
+            assert.strictEqual(events[0].evt, 'upd_attrs');
+            assert.deepStrictEqual(events[0].attrs_diff, { color: { old: 'red', new: 'blue' } });
         });
 
         it('should call delete callback when node is removed', () => {

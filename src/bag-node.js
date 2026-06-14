@@ -155,21 +155,27 @@ export class BagNode {
         trigger = trigger && changed;
 
         // Event type: 'upd_value' for value-only, 'upd_value_attr' for combined
-        // Note: evt is used ONLY for parent notification, not for node subscribers
         let evt = 'upd_value';
+        let attrsDiff = null;
 
         if (attributes !== null) {
             evt = 'upd_value_attr';
-            // Call setAttr with trigger=false: node subscribers receive only
-            // 'upd_value' from here, not a separate 'upd_attrs' event
+            // Call setAttr with trigger=false: it must not emit its own
+            // 'upd_attrs' event, the combined 'upd_value_attr' covers both
+            const oldattrSnapshot = { ...this._attr };
             this.setAttr(attributes, false, updattr, removeNullAttributes);
+            const diff = this._buildAttrDiff(oldattrSnapshot, this._attr);
+            attrsDiff = Object.keys(diff).length > 0 ? diff : null;
         }
 
-        // Node subscribers always receive 'upd_value' (not 'upd_value_attr')
-        // They don't need to know if attributes also changed
+        // Node subscribers receive the real event type and an info object:
+        // { oldvalue } for upd_value, plus { attrs_diff } for upd_value_attr
         if (trigger) {
+            const info = attrsDiff !== null
+                ? { oldvalue, attrs_diff: attrsDiff }
+                : { oldvalue };
             for (const subscriber of Object.values(this._nodeSubscribers)) {
-                subscriber({ node: this, info: oldvalue, evt: 'upd_value' });
+                subscriber({ node: this, info, evt });
             }
         }
 
@@ -180,7 +186,7 @@ export class BagNode {
             }
             if (trigger) {
                 this._parentBag._onNodeChanged(
-                    this, [this.label], evt, oldvalue, reason
+                    this, [this.label], evt, oldvalue, attrsDiff, reason
                 );
             }
         }
@@ -251,6 +257,30 @@ export class BagNode {
     }
 
     /**
+     * Compute the symmetric diff between two attribute snapshots.
+     *
+     * Returns a dict mapping each changed key to { old, new }, covering
+     * added (old=null), removed (new=null) and modified entries. Keys whose
+     * value did not change are omitted.
+     *
+     * @param {Object} oldattr - Attribute snapshot before the change.
+     * @param {Object} newattr - Attribute snapshot after the change.
+     * @returns {Object} Diff dict { name: { old, new } }.
+     */
+    _buildAttrDiff(oldattr, newattr) {
+        const diff = {};
+        const keys = new Set([...Object.keys(oldattr), ...Object.keys(newattr)]);
+        for (const key of keys) {
+            const oldVal = key in oldattr ? oldattr[key] : null;
+            const newVal = key in newattr ? newattr[key] : null;
+            if (oldVal !== newVal) {
+                diff[key] = { old: oldVal, new: newVal };
+            }
+        }
+        return diff;
+    }
+
+    /**
      * Set attributes on the node.
      *
      * @param {Object} [attr=null] - Dictionary of attributes to set.
@@ -261,9 +291,12 @@ export class BagNode {
     setAttr(attr = null, trigger = true, updattr = true, removeNullAttributes = true) {
         const newAttr = attr || {};
 
-        // Save old state BEFORE any modification (only if needed for subscribers)
+        // Save old state BEFORE any modification (only if needed for subscribers
+        // or for the parent's backref propagation)
         const hasNodeSubscribers = Object.keys(this._nodeSubscribers).length > 0;
-        const oldattr = (trigger && hasNodeSubscribers) ? { ...this._attr } : null;
+        const needDiff = trigger && (hasNodeSubscribers ||
+            (this._parentBag !== null && this._parentBag.backref));
+        const oldattr = needDiff ? { ...this._attr } : null;
 
         if (updattr) {
             Object.assign(this._attr, newAttr);
@@ -279,24 +312,20 @@ export class BagNode {
             }
         }
 
-        if (trigger) {
-            if (oldattr !== null) {
-                // Find which attributes changed
-                const updAttrs = [];
-                for (const [k, v] of Object.entries(this._attr)) {
-                    if (oldattr[k] !== v) {
-                        updAttrs.push(k);
-                    }
-                }
+        if (trigger && oldattr !== null) {
+            const diff = this._buildAttrDiff(oldattr, this._attr);
+
+            if (Object.keys(diff).length > 0 && hasNodeSubscribers) {
                 for (const subscriber of Object.values(this._nodeSubscribers)) {
-                    subscriber({ node: this, info: updAttrs, evt: 'upd_attrs' });
+                    subscriber({ node: this, info: { attrs_diff: diff }, evt: 'upd_attrs' });
                 }
             }
 
-            if (this._parentBag !== null && this._parentBag.backref) {
+            if (Object.keys(diff).length > 0 &&
+                this._parentBag !== null && this._parentBag.backref) {
                 const reason = trigger === true ? 'true' : String(trigger);
                 this._parentBag._onNodeChanged(
-                    this, [this.label], 'upd_attrs', null, reason
+                    this, [this.label], 'upd_attrs', null, diff, reason
                 );
             }
         }
@@ -362,8 +391,11 @@ export class BagNode {
      *
      * Callback signature: callback({ node, info, evt })
      * - node: This BagNode
-     * - info: oldvalue (for 'upd_value') or list of changed attrs (for 'upd_attrs')
-     * - evt: Event type ('upd_value' or 'upd_attrs')
+     * - info: an object with semantic keys:
+     *     - 'upd_value'      → { oldvalue }
+     *     - 'upd_attrs'      → { attrs_diff }   (diff dict { name: { old, new } })
+     *     - 'upd_value_attr' → { oldvalue, attrs_diff }
+     * - evt: Event type ('upd_value', 'upd_attrs' or 'upd_value_attr')
      */
     subscribe(subscriberId, callback) {
         this._nodeSubscribers[subscriberId] = callback;

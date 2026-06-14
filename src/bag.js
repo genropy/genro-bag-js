@@ -565,13 +565,15 @@ export class Bag {
      *
      * @param {BagNode} node - The changed node.
      * @param {string[]} pathlist - Path to the node.
-     * @param {string} evt - Event type.
-     * @param {*} [oldvalue=null] - Previous value.
+     * @param {string} evt - Event type ('upd_value', 'upd_attrs', 'upd_value_attr').
+     * @param {*} [oldvalue=null] - Previous value (for value changes).
+     * @param {Object|null} [attrsDiff=null] - Attribute diff dict { name: { old, new } }
+     *   (for attribute changes).
      * @param {string|null} [reason=null] - Reason for change.
      */
-    _onNodeChanged(node, pathlist, evt, oldvalue = null, reason = null) {
+    _onNodeChanged(node, pathlist, evt, oldvalue = null, attrsDiff = null, reason = null) {
         for (const s of Object.values(this._updSubscribers)) {
-            s({ node, pathlist, oldvalue, evt, reason });
+            s({ node, pathlist, oldvalue, attrs_diff: attrsDiff, evt, reason });
         }
         if (this._parent && this._parentNode) {
             this._parent._onNodeChanged(
@@ -579,6 +581,7 @@ export class Bag {
                 [this._parentNode.label, ...pathlist],
                 evt,
                 oldvalue,
+                attrsDiff,
                 reason
             );
         }
