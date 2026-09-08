@@ -48,14 +48,14 @@ genro-bag-js brings the Python genro-bag architecture to JavaScript/TypeScript f
 ## Installation
 
 ```bash
-# Not yet published
-npm install genro-bag
+# Install the tagged JavaScript release
+npm install git+https://github.com/genropy/genro-bag-js.git#v0.4.0
 ```
 
 ## Usage
 
 ```typescript
-import { Bag } from 'genro-bag';
+import { Bag } from 'genro-bag-js';
 
 // Create a Bag
 const bag = new Bag();
@@ -73,7 +73,7 @@ const restored = Bag.fromXml(xml);
 ### With Builder
 
 ```typescript
-import { Bag, BagBuilderBase, element } from 'genro-bag';
+import { Bag, BagBuilderBase, element } from 'genro-bag-js';
 
 class GUIBuilder extends BagBuilderBase {
   @element({ subTags: 'button,textfield' })
@@ -92,7 +92,7 @@ panel.button('Cancel', 'doCancel');
 ### With Compiler
 
 ```typescript
-import { BagCompilerBase, compiler } from 'genro-bag';
+import { BagCompilerBase, compiler } from 'genro-bag-js';
 
 class DOMCompiler extends BagCompilerBase {
   @compiler
@@ -114,6 +114,8 @@ class DOMCompiler extends BagCompilerBase {
 ```
 
 ## Documentation
+
+- [Python alignment and TYTX compatibility](docs/python-alignment.md)
 
 - [Architecture Analysis](docs/analysis/analisi_bag_js_builder_js.md) - Detailed analysis of existing JS implementation
 - [Plan](docs/plan.md) - Implementation roadmap

@@ -2,9 +2,21 @@
 
 import { BagNodeContainer } from './bag-node-container.js';
 import { BagNode } from './bag-node.js';
-import { toTytx as tytxEncode, fromTytx as tytxDecode } from 'genro-tytx';
+import { toTytx as tytxEncode, fromTytx as tytxDecode, registerClass, getRegisteredType } from 'genro-tytx';
 import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
 import { BagCbResolver, BagResolver } from './resolver.js';
+import { BagSerializationError, encodeResolver, decodeResolver, encodeAttrs, decodeAttrs } from './resolver-wire.js';
+
+// Resolver caches are not structural branches on the wire: the descriptor
+// owns that node, and serializing cached descendants would orphan them.
+function* serializationNodes(bag, prefix = '') {
+    for (const node of bag) {
+        const path = prefix ? `${prefix}.${node.label}` : node.label;
+        yield [path, node];
+        const value = node.getValue(true);
+        if (!node.resolver && value instanceof Bag) yield* serializationNodes(value, path);
+    }
+}
 
 /**
  * Bag - Hierarchical data container with path-based access.
@@ -14,6 +26,8 @@ import { BagCbResolver, BagResolver } from './resolver.js';
  * like 'a.b.c'.
  */
 export class Bag {
+    static tytxSuffix = 'X';
+
     /**
      * Create a new Bag.
      *
@@ -1462,17 +1476,19 @@ export class Bag {
         // Normalize to list of [label, value, attr]
         let items;
         if (source instanceof Bag) {
-            items = source.query('#k,#v,#a');
+            items = [...source].map(n => [n.label, n.getValue(true), n.attr, n.nodeTag, n.xmlTag]);
         } else {
             // Plain object
             items = Object.entries(source).map(([k, v]) => [k, v, {}]);
         }
 
-        for (const [label, value, attr] of items) {
+        for (const [label, value, attr, nodeTag = null, xmlTag = null] of items) {
             if (this._nodes.has(label)) {
                 const currNode = this._nodes.get(label);
-                // Merge attributes
+                // Merge attributes and incoming non-null tags.
                 currNode.setAttr(attr, true);
+                if (nodeTag !== null) currNode.nodeTag = nodeTag;
+                if (xmlTag !== null) currNode.xmlTag = xmlTag;
                 const currValue = currNode.getValue(true);  // static
                 if (value instanceof Bag && currValue instanceof Bag) {
                     // Recursive update for nested Bags
@@ -1483,7 +1499,9 @@ export class Bag {
                     }
                 }
             } else {
-                this.setItem(label, value, attr);
+                const node = this.setItem(label, value, attr);
+                node.nodeTag = nodeTag;
+                node.xmlTag = xmlTag;
             }
         }
     }
@@ -1699,10 +1717,10 @@ export class Bag {
      */
     *_nodeFlattener(pathRegistry = null) {
         const compact = pathRegistry !== null;
-        const pathToCode = compact ? {} : null;
+        const pathToCode = compact ? Object.create(null) : null;
         let codeCounter = 0;
 
-        for (const [path, node] of this.walk(true)) {
+        for (const [path, node] of serializationNodes(this)) {
             const lastDot = path.lastIndexOf('.');
             const parentPath = lastDot >= 0 ? path.slice(0, lastDot) : '';
 
@@ -1710,16 +1728,24 @@ export class Bag {
 
             // Value encoding
             let value;
-            if (nodeValue instanceof Bag) {
-                value = '::X';
+            if (node.resolver) {
+                value = encodeResolver(node.resolver);
+            } else if (nodeValue instanceof Bag) {
+                const cls = nodeValue.constructor;
+                const suffix = cls.tytxSuffix;
+                const registered = getRegisteredType(suffix);
+                if (registered !== cls && !(suffix === 'X' && registered === Bag)) {
+                    throw new BagSerializationError(`Unregistered Bag branch type: ${cls.name}`);
+                }
+                value = `::${suffix}`;
             } else if (nodeValue === null) {
                 value = '::NN';
             } else {
                 value = nodeValue;
             }
 
-            const attr = node.attr ? { ...node.attr } : {};
-            const tag = node.tag || null;
+            const attr = encodeAttrs(node.attr);
+            const tag = node.nodeTag;
 
             if (compact) {
                 const parentRef = parentPath ? pathToCode[parentPath] : null;
@@ -1771,52 +1797,53 @@ export class Bag {
      * @returns {Bag} Reconstructed Bag.
      */
     static fromTytx(data, transport = 'json') {
-        const tytxTransport = transport === 'json' ? null : transport;
-        const parsed = tytxDecode(data, tytxTransport);
-
-        const rows = parsed.rows;
-        const pathsRaw = parsed.paths;
-        const codeToPath = pathsRaw
-            ? Object.fromEntries(Object.entries(pathsRaw).map(([k, v]) => [parseInt(k), v]))
-            : null;
-
-        const bag = new Bag();
-        const pathToBag = { '': bag };
-
-        for (const row of rows) {
-            const [parentRef, label, tag, value, attr] = row;
-
-            // Resolve parent path
-            let parentPath;
-            if (codeToPath !== null) {
-                parentPath = parentRef !== null ? (codeToPath[parentRef] || '') : '';
-            } else {
-                parentPath = parentRef || '';
-            }
-
-            const parentBag = pathToBag[parentPath] || bag;
-            const fullPath = parentPath ? `${parentPath}.${label}` : label;
-
-            // Decode value
-            if (value === '::X') {
-                const childBag = new Bag();
-                parentBag.setItem(label, childBag, attr);
-                pathToBag[fullPath] = childBag;
-            } else if (value === '::NN') {
-                parentBag.setItem(label, null, attr);
-            } else {
-                parentBag.setItem(label, value, attr);
-            }
-
-            // Set tag if present
-            if (tag) {
-                const node = parentBag.getNode(label);
-                if (node) {
-                    node.tag = tag;
-                }
-            }
+        // The registry passes an empty payload for a structural branch marker.
+        if (data === '') return new this();
+        const parsed = tytxDecode(data, transport === 'json' ? null : transport);
+        if (!parsed || !Array.isArray(parsed.rows)) {
+            throw new BagSerializationError('Invalid TYTX Bag: expected rows');
         }
+        const paths = parsed.paths;
+        const compact = paths != null;
+        const bag = new this();
+        const pathToBag = new Map([['', bag]]);
 
+        for (const row of parsed.rows) {
+            if (!Array.isArray(row) || row.length !== 5) {
+                throw new BagSerializationError('Invalid TYTX Bag row');
+            }
+            const [parentRef, label, tag, rawValue, rawAttr] = row;
+            let parentPath = parentRef ?? '';
+            if (compact) {
+                if (parentRef !== null && !Object.hasOwn(paths, parentRef)) {
+                    throw new BagSerializationError(`Unknown TYTX parent reference: ${parentRef}`);
+                }
+                parentPath = parentRef === null ? '' : paths[parentRef];
+            }
+            if (!pathToBag.has(parentPath)) {
+                throw new BagSerializationError(`Missing or undecodable TYTX parent branch: ${parentPath}`);
+            }
+            const parentBag = pathToBag.get(parentPath);
+            const fullPath = parentPath ? `${parentPath}.${label}` : label;
+            let value = rawValue;
+            // MessagePack does not rescan text. Only Bag-owned empty markers
+            // are structural: arbitrary scalar decoders must never run here.
+            if (transport === 'msgpack' && typeof value === 'string' && value.startsWith('::')) {
+                const cls = getRegisteredType(value.slice(2));
+                if (cls === Bag || cls?.prototype instanceof Bag) value = tytxDecode(value);
+            }
+            const resolver = decodeResolver(value);
+            if (value instanceof Bag) {
+                let cls = value.constructor;
+                if (cls.tytxSuffix === 'X' && this.tytxSuffix === 'X') cls = this;
+                value = new cls();
+                pathToBag.set(fullPath, value);
+            } else if (value === '::NN') {
+                value = null;
+            }
+            const node = parentBag.setItem(label, resolver || value, decodeAttrs(rawAttr));
+            node.nodeTag = tag ?? null;
+        }
         return bag;
     }
 
@@ -1884,8 +1911,11 @@ export class Bag {
             attrsParts.push(`_tag="${this._escapeAttr(originalTag)}"`);
         }
 
+        if (node.resolver) {
+            attrsParts.push(`_resolver="${this._escapeAttr(encodeResolver(node.resolver))}"`);
+        }
         if (node.attr) {
-            for (const [k, v] of Object.entries(node.attr)) {
+            for (const [k, v] of Object.entries(encodeAttrs(node.attr))) {
                 if (v !== null && v !== false && v !== undefined) {
                     attrsParts.push(`${k}="${this._escapeAttr(String(v))}"`);
                 }
@@ -1894,7 +1924,7 @@ export class Bag {
         const attrsStr = attrsParts.length ? ' ' + attrsParts.join(' ') : '';
 
         // Handle value
-        const value = node.getValue(true);  // static=true
+        const value = node.resolver ? null : node.getValue(true);  // static=true
 
         // Check if value is a Bag
         if (value && typeof value._bagToXml === 'function') {
@@ -2033,6 +2063,10 @@ export class Bag {
                 attr[attrNode.name] = attrNode.value;
             }
 
+            const resolver = decodeResolver(attr._resolver);
+            delete attr._resolver;
+            Object.assign(attr, decodeAttrs(attr));
+
             // Resolve label: _tag attribute > tagAttribute > XML tag name
             let label = originalXmlTag;
             if ('_tag' in attr) {
@@ -2056,6 +2090,7 @@ export class Bag {
                 node = bag.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
             }
 
+            if (resolver) node.resolver = resolver;
             // Save original XML tag for round-trip serialization
             node.xmlTag = originalXmlTag;
         }
@@ -2129,7 +2164,7 @@ export class Bag {
      * @private
      */
     _nodeToJsonDict(node, typed) {
-        let value = node.getValue(true);  // static=true
+        let value = node.resolver ? null : node.getValue(true);  // static=true
 
         // Check if value is a Bag
         if (value && typeof value._nodeToJsonDict === 'function') {
@@ -2140,11 +2175,10 @@ export class Bag {
             value = childResult;
         }
 
-        return {
-            label: node.label,
-            value: value,
-            attr: node.attr && Object.keys(node.attr).length > 0 ? { ...node.attr } : {}
-        };
+        const result = { label: node.label, value, attr: encodeAttrs(node.attr) };
+        if (node.nodeTag !== null) result.tag = node.nodeTag;
+        if (node.resolver) result.resolver = encodeResolver(node.resolver);
+        return result;
     }
 
     /**
@@ -2174,6 +2208,7 @@ export class Bag {
      * @private
      */
     static _fromJsonRecursive(data, listJoiner = null) {
+        if (data instanceof Bag) return data;
         if (Array.isArray(data)) {
             // listJoiner: join string arrays into a single string
             if (listJoiner !== null && data.every(item => typeof item === 'string')) {
@@ -2190,8 +2225,11 @@ export class Bag {
                 for (const item of data) {
                     const label = item.label;
                     const value = Bag._fromJsonRecursive(item.value, listJoiner);
-                    const attr = item.attr || {};
-                    result.setItem(label, value, Object.keys(attr).length > 0 ? attr : null);
+                    const attr = decodeAttrs(item.attr);
+                    const node = result.setItem(label, value, attr);
+                    node.nodeTag = item.tag ?? null;
+                    const resolver = decodeResolver(item.resolver);
+                    if (resolver) node.resolver = resolver;
                 }
                 return result;
             }
@@ -2391,3 +2429,6 @@ export class BagException extends Error {
 
 // Register Bag class with BagResolver for asBag conversion (avoids circular import)
 BagResolver.registerBagClass(Bag);
+
+// Shared TYTX registry: subclasses register their own wire suffix explicitly.
+registerClass(Bag);

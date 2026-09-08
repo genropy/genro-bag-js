@@ -1,6 +1,7 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagResolver } from '../resolver.js';
+import { randomUUID } from '#uuid';
 
 /**
  * UuidResolver - resolver that generates UUIDs.
@@ -31,6 +32,6 @@ export class UuidResolver extends BagResolver {
     ]);
 
     load() {
-        return crypto.randomUUID();
+        return randomUUID();
     }
 }

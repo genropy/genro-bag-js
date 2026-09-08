@@ -1,9 +1,11 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagResolver } from '../resolver.js';
+import { fromTytx } from 'genro-tytx';
 
 /**
  * StorageResolver - resolver that reads from browser Web Storage.
+ * Optional dtype converts non-null values/defaults through TYTX.
  *
  * // DIFF-PYTHON: This is the browser counterpart of Python's EnvResolver
  * // (which reads os.environ). Not a 1:1 port — platform-specific resolver.
@@ -28,7 +30,8 @@ export class StorageResolver extends BagResolver {
         retryPolicy: null,
         key: null,
         storageType: 'local',
-        defaultValue: null
+        defaultValue: null,
+        dtype: null
     };
 
     static classArgs = ['key'];
@@ -76,16 +79,24 @@ export class StorageResolver extends BagResolver {
         const key = kwargs.key;
         const defaultValue = kwargs.defaultValue;
 
-        if (!key) {
-            return defaultValue;
+        const storage = key ? this._getStorage(kwargs) : null;
+        const stored = storage ? storage.getItem(key) : null;
+        const value = stored !== null ? stored : defaultValue;
+        if (kwargs.dtype == null || value == null) return value;
+        const text = String(value);
+        // Reject partial parseInt/parseFloat conversions (e.g. "12oops").
+        if (kwargs.dtype === 'L' && !/^[+-]?\d+(?:_\d+)*$/.test(text.trim())) {
+            throw new TypeError(`Invalid integer in Web Storage: ${text}`);
         }
-
-        const storage = this._getStorage(kwargs);
-        if (!storage) {
-            return defaultValue;
+        if (kwargs.dtype === 'R' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim())) {
+            throw new TypeError(`Invalid real number in Web Storage: ${text}`);
         }
-
-        const value = storage.getItem(key);
-        return value !== null ? value : defaultValue;
+        const input = kwargs.dtype === 'L' ? text.replaceAll('_', '') : text;
+        const converted = fromTytx(`${input}::${kwargs.dtype}`);
+        if ((typeof converted === 'number' && Number.isNaN(converted))
+            || (converted instanceof Date && Number.isNaN(converted.getTime()))) {
+            throw new TypeError(`Invalid ${kwargs.dtype} value in Web Storage: ${text}`);
+        }
+        return converted;
     }
 }

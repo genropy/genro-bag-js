@@ -84,11 +84,13 @@ export class BagNode {
      * @param {boolean} [isStatic=false] - If true, return cached value without triggering resolver.
      * @param {string} [queryString=null] - Query string from path suffix (after '?').
      *   - null: return node value
-     *   - 'attr': return single attribute value
+     *   - '': return all attributes as an object
+     *   - 'attr': return single attribute value (resolving attribute resolvers)
      *   - 'attr1&attr2': return tuple of attribute values
      *   - 'key=val::T&key2=val2::T': kwargs for resolver (parsed via tytx ::QS)
      * @param {Object} [kwargs={}] - Additional kwargs passed to resolver.
-     * @returns {*} The node's value or attribute(s).
+     * @returns {*} The value/attributes, or a Promise of the complete query result.
+     * Static attribute queries preserve raw resolver objects without executing them.
      */
     getValue(isStatic = false, queryString = null, kwargs = {}) {
         if (queryString !== null) {
@@ -96,9 +98,17 @@ export class BagNode {
             const parsedQs = fromTytx(`${queryString}::QS`);
 
             if (Array.isArray(parsedQs)) {
-                // Attributes: ?color or ?color&size
-                const attrs = parsedQs.map(k => this._attr[k]);
-                return attrs.length === 1 ? attrs[0] : attrs;
+                // Attribute resolvers use their own defaults, without node context.
+                const keys = parsedQs.length ? parsedQs : Object.keys(this._attr);
+                const values = keys.map(key => {
+                    const value = this._attr[key];
+                    return !isStatic && value instanceof BagResolver ? value.resolve() : value;
+                });
+                const result = attrs => parsedQs.length === 0
+                    ? Object.fromEntries(keys.map((key, index) => [key, attrs[index]]))
+                    : attrs.length === 1 ? attrs[0] : attrs;
+                return values.some(value => value && typeof value.then === 'function')
+                    ? Promise.all(values).then(result) : result(values);
             } else {
                 // Dict → kwargs for resolver: ?x=1&y=2 → {x: 1, y: 2}
                 if (!this._resolver) {
