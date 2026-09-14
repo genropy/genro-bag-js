@@ -8,6 +8,19 @@ import { BagCbResolver } from '../src/resolver.js';
 
 describe('BagNode', () => {
     describe('getValue with queryString', () => {
+        it('returns null for absent query attributes without losing falsy values', () => {
+            const bag = new Bag();
+            bag.setItem('store', null, {zero: 0, disabled: false, empty: ''});
+            const node = bag.getNode('store');
+            for (const isStatic of [false, true]) {
+                assert.strictEqual(node.getValue(isStatic, 'missing'), null);
+                assert.deepStrictEqual(node.getValue(isStatic, 'missing&zero&disabled&empty'),
+                    [null, 0, false, '']);
+                assert.strictEqual(bag.getItem('store?totalRowCount', null, isStatic), null);
+            }
+            assert.deepStrictEqual(node.attr, {zero: 0, disabled: false, empty: ''});
+        });
+
         it('should return value without queryString', () => {
             const node = new BagNode(null, 'test', 42);
             assert.strictEqual(node.getValue(), 42);

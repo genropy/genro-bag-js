@@ -16,16 +16,6 @@ export class BagNodeContainer {
         this._parentBag = null;
     }
 
-    _syncIndexes() {
-        let index = 0;
-        while (Object.prototype.hasOwnProperty.call(this, index)) {
-            delete this[index++];
-        }
-        this._list.forEach((node, nodeIndex) => {
-            this[nodeIndex] = node;
-        });
-    }
-
     /**
      * Return the index of a label in this container.
      *
@@ -264,7 +254,6 @@ export class BagNodeContainer {
             const idx = this._parsePosition(nodePosition);
             this._dict[label] = node;
             this._list.splice(idx, 0, node);
-            this._syncIndexes();
 
             // Trigger insert event if backref enabled.
             // reason is the 4th argument (3rd is pathlist) — passing it in the
@@ -295,7 +284,6 @@ export class BagNodeContainer {
             const idx = this._list.indexOf(node);
             if (idx >= 0) {
                 this._list.splice(idx, 1);
-                this._syncIndexes();
             }
             node.parentBag = null;
             return node;
@@ -331,33 +319,6 @@ export class BagNodeContainer {
         }
         this._dict = {};
         this._list = [];
-        this._syncIndexes();
-    }
-
-    forEach(callback, thisArg = undefined) {
-        return this._list.forEach(callback, thisArg);
-    }
-
-    map(callback, thisArg = undefined) {
-        return this._list.map(callback, thisArg);
-    }
-
-    filter(callback, thisArg = undefined) {
-        return this._list.filter(callback, thisArg);
-    }
-
-    indexOf(node) {
-        return this._list.indexOf(node);
-    }
-
-    splice(start, deleteCount, ...nodes) {
-        const removed = this._list.splice(start, deleteCount, ...nodes);
-        this._dict = {};
-        for (const node of this._list) {
-            this._dict[node.label] = node;
-        }
-        this._syncIndexes();
-        return removed;
     }
 
     /**
@@ -474,7 +435,6 @@ export class BagNodeContainer {
                 this._parentBag._onNodeInserted(node, position);
             }
         }
-        this._syncIndexes();
     }
 
     /**

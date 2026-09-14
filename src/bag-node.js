@@ -108,7 +108,7 @@ export class BagNode {
                 // Attribute resolvers use their own defaults, without node context.
                 const keys = parsedQs.length ? parsedQs : Object.keys(this._attr);
                 const values = keys.map(key => {
-                    const value = this._attr[key];
+                    const value = this.getAttr(key);
                     return !isStatic && value instanceof BagResolver ? value.resolve() : value;
                 });
                 const result = attrs => parsedQs.length === 0

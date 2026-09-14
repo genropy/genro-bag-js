@@ -756,7 +756,7 @@ export class Bag {
      * @returns {Array<{key: string, value: *}>} Array of key/value objects.
      */
     items() {
-        return this._nodes.map(node => ({key: node.label, value: node.getValue()}));
+        return [...this._nodes].map(node => ({key: node.label, value: node.getValue()}));
     }
 
     // -------------------------------------------------------------------------
@@ -1481,7 +1481,8 @@ export class Bag {
             copied.nodeTag = node.nodeTag;
             copied.xmlTag = node.xmlTag;
             // Insert by position so repeated labels do not overwrite each other.
-            result._nodes.splice(result._nodes.length, 0, copied);
+            result._nodes._list.push(copied);
+            result._nodes._dict[copied.label] = copied;
         }
         return result;
     }

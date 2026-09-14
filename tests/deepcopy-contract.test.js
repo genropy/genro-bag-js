@@ -8,7 +8,7 @@ test('deepcopy preserves duplicate labels, nullable attributes and specialized c
     const bag = new SpecializedBag();
     const first = bag.setItem('same', new Bag({x: 1}));
     first.setAttr({nullable: null}, false, true, false);
-    bag._nodes.splice(1, 0, new Node(bag, 'same', 2));
+    bag._nodes._list.splice(1, 0, new Node(bag, 'same', 2));
     const copy = bag.deepcopy();
     assert.ok(copy instanceof SpecializedBag);
     assert.ok(copy.getNode('#0') instanceof Node);
