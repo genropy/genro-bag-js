@@ -114,3 +114,33 @@ LocalStorageResolver, SessionStorageResolver or EnvResolver is introduced.
   and the current Python genro-bag, genro-tytx and genro-toolbox packages.
   The alignment bridge checks mixed branch identities inside JS and Python,
   resolver counterparts, and signed payloads verified on return to Python.
+
+## Legacy JavaScript digest calls
+
+The signature remains `digest(what, condition, asColumns)`. For compatibility
+with legacy JavaScript callers, a boolean second argument is interpreted as
+`asColumns`, with no filter, and emits a `console.warn` deprecation notice.
+Migrate `digest(what, true)` to `digest(what, null, true)` (and likewise for
+`false`). Callable filters retain their existing behavior and do not warn.
+The `columns()` helper already uses the explicit three-argument form.
+
+## JavaScript items contract
+
+`Bag.items()` returns an ordered array of `{key, value}` objects, matching
+legacy JavaScript Bag. Values are resolved through `getValue()` and nested
+Bags retain their identity. This differs from Python's key/value pairs.
+
+## JavaScript update contract
+
+`update(source, mode, reason, ignoreNone=false)` retains the legacy JavaScript
+positional contract. With `mode='static'`, incoming resolvers are preserved and
+not executed, including newly inserted nodes. Otherwise their results are
+copied; an incoming resolved result replaces a destination resolver. Nested
+Bags merge recursively unless the incoming `__replace` marker requests
+replacement. The marker is consumed and `reason` is propagated to events.
+Null values overwrite existing values by default. The previous standalone
+`ignoreNone` extension is now explicitly the fourth argument, not the mode.
+This JS signature intentionally differs from Python's `resolved` flag.
+
+Unlike the historical implementation, insertion does not drop static resolvers.
+This repairs the lazy-copy contract instead of retaining that historical bug.

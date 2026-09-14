@@ -1,6 +1,7 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagNode } from './bag-node.js';
+import { fromTytx } from 'genro-tytx';
 
 /**
  * BagNodeContainer - Ordered container for BagNodes with positional insert.
@@ -13,6 +14,16 @@ export class BagNodeContainer {
         this._dict = {};     // maps label -> BagNode
         this._list = [];     // BagNodes in order
         this._parentBag = null;
+    }
+
+    _syncIndexes() {
+        let index = 0;
+        while (Object.prototype.hasOwnProperty.call(this, index)) {
+            delete this[index++];
+        }
+        this._list.forEach((node, nodeIndex) => {
+            this[nodeIndex] = node;
+        });
     }
 
     /**
@@ -38,7 +49,8 @@ export class BagNodeContainer {
         // Handle #attr=value or #=value syntax
         match = label.match(/^#(\w*)=(.*)$/);
         if (match) {
-            const [, attr, value] = match;
+            const [, attr, rawValue] = match;
+            const value = rawValue.includes('::') ? fromTytx(rawValue) : rawValue;
             if (attr) {
                 // #attr=value - find by attribute
                 return this._list.findIndex(node => node.getAttr(attr) === value);
@@ -161,12 +173,8 @@ export class BagNodeContainer {
             return (key >= 0 && key < this._list.length) ? this._list[key] : null;
         }
         if (key.startsWith('#')) {
-            try {
-                const idx = parseInt(key.slice(1), 10);
-                return (idx >= 0 && idx < this._list.length) ? this._list[idx] : null;
-            } catch {
-                return null;
-            }
+            const idx = this.index(key);
+            return idx >= 0 ? this._list[idx] : null;
         }
         return this._dict[key] || null;
     }
@@ -256,6 +264,7 @@ export class BagNodeContainer {
             const idx = this._parsePosition(nodePosition);
             this._dict[label] = node;
             this._list.splice(idx, 0, node);
+            this._syncIndexes();
 
             // Trigger insert event if backref enabled.
             // reason is the 4th argument (3rd is pathlist) — passing it in the
@@ -286,7 +295,9 @@ export class BagNodeContainer {
             const idx = this._list.indexOf(node);
             if (idx >= 0) {
                 this._list.splice(idx, 1);
+                this._syncIndexes();
             }
+            node.parentBag = null;
             return node;
         }
         return null;
@@ -315,8 +326,38 @@ export class BagNodeContainer {
      * Clear all elements.
      */
     clear() {
+        for (const node of this._list) {
+            node.parentBag = null;
+        }
         this._dict = {};
         this._list = [];
+        this._syncIndexes();
+    }
+
+    forEach(callback, thisArg = undefined) {
+        return this._list.forEach(callback, thisArg);
+    }
+
+    map(callback, thisArg = undefined) {
+        return this._list.map(callback, thisArg);
+    }
+
+    filter(callback, thisArg = undefined) {
+        return this._list.filter(callback, thisArg);
+    }
+
+    indexOf(node) {
+        return this._list.indexOf(node);
+    }
+
+    splice(start, deleteCount, ...nodes) {
+        const removed = this._list.splice(start, deleteCount, ...nodes);
+        this._dict = {};
+        for (const node of this._list) {
+            this._dict[node.label] = node;
+        }
+        this._syncIndexes();
+        return removed;
     }
 
     /**
@@ -433,6 +474,7 @@ export class BagNodeContainer {
                 this._parentBag._onNodeInserted(node, position);
             }
         }
+        this._syncIndexes();
     }
 
     /**

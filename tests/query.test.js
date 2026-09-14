@@ -207,6 +207,32 @@ describe('BagQuery - Block 3: Query Methods', () => {
             assert.deepEqual(result, [['a', 1], ['b', 2]]);
         });
 
+        for (const asColumns of [true, false]) {
+            it(`accepts deprecated boolean condition=${asColumns}`, t => {
+                const warning = t.mock.method(console, 'warn', () => {});
+                const bag = new Bag({a: 1, b: 2});
+                assert.deepEqual(bag.digest('#k,#v', asColumns),
+                    bag.digest('#k,#v', null, asColumns));
+                assert.equal(warning.mock.callCount(), 1);
+                assert.match(warning.mock.calls[0].arguments[0], /deprecated/i);
+                assert.match(warning.mock.calls[0].arguments[0], /digest\(what, null, asColumns\)/);
+            });
+        }
+
+        it('preserves empty legacy columns', t => {
+            const warning = t.mock.method(console, 'warn', () => {});
+            assert.deepEqual(new Bag().digest('#k,#v', true), [[], []]);
+            assert.equal(warning.mock.callCount(), 1);
+        });
+
+        it('does not warn for callable filters or the explicit column argument', t => {
+            const warning = t.mock.method(console, 'warn', () => {});
+            const bag = new Bag({a: 1, b: 2});
+            assert.deepEqual(bag.digest('#k,#v', n => n.value > 1, true), [['b'], [2]]);
+            assert.deepEqual(bag.digest('#k,#v', null, true), [['a', 'b'], [1, 2]]);
+            assert.equal(warning.mock.callCount(), 0);
+        });
+
         it('should support condition filter', () => {
             const bag = new Bag();
             bag.setItem('a', 1);

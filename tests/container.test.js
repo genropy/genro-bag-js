@@ -6,6 +6,21 @@ import { BagNodeContainer } from '../src/bag-node-container.js';
 import { BagCbResolver } from '../src/resolver.js';
 
 describe('BagNodeContainer', () => {
+    describe('array-compatible reads', () => {
+        it('filters nodes without changing order or indexes', () => {
+            const c = new BagNodeContainer();
+            c.set('a', 1, '>', {tag: 'framepane_top'});
+            c.set('b', 2, '>', {tag: 'other'});
+            c.set('c', 3, '>', {tag: 'framepane_top'});
+
+            const selected = c.filter(node => node.getAttr('tag') === 'framepane_top');
+
+            assert.deepStrictEqual(selected.map(node => node.label), ['a', 'c']);
+            assert.deepStrictEqual(c.keys(), ['a', 'b', 'c']);
+            assert.strictEqual(c[0], c.get('a'));
+        });
+    });
+
     describe('index with special syntax', () => {
         it('should find by label', () => {
             const c = new BagNodeContainer();
@@ -312,6 +327,21 @@ describe('BagNodeContainer', () => {
             assert.strictEqual(node.getAttr('a'), 1);
             assert.strictEqual(node.getAttr('b'), 2);
             assert.strictEqual(node.getAttr('c'), 3);
+        });
+    });
+
+    describe('array-compatible access', () => {
+        it('keeps numeric indexes and array helpers in sync', () => {
+            const c = new BagNodeContainer();
+            c.set('a', 1);
+            c.set('b', 2);
+
+            assert.strictEqual(c[0].label, 'a');
+            assert.deepStrictEqual(c.map(node => node.label), ['a', 'b']);
+            assert.strictEqual(c.indexOf(c[1]), 1);
+            c.splice(0, 1);
+            assert.strictEqual(c[0].label, 'b');
+            assert.deepStrictEqual(c.keys(), ['b']);
         });
     });
 });

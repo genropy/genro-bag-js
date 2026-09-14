@@ -297,7 +297,7 @@ export class BagResolver {
      */
     set cachedValue(value) {
         if (this._node) {
-            this._node._value = value;
+            this._node.setValue(value, false);
         } else {
             this._cachedValue = value;
         }
@@ -366,7 +366,7 @@ export class BagResolver {
 
         // Without retry - can be sync or async
         const result = doLoad();
-        if (result instanceof Promise) {
+        if (result && typeof result.then === 'function') {
             return result.then(value => this._finalize(value));
         }
         return this._finalize(result);

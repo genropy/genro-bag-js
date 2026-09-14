@@ -215,6 +215,23 @@ describe('BagResolver', () => {
             await resolver.resolve();
             assert.strictEqual(node.staticValue, 42);
         });
+
+        it('should preserve a non-Promise thenable contract', () => {
+            const chained = {kind: 'deferred'};
+            const thenable = {
+                then(callback) {
+                    assert.strictEqual(callback(42), 42);
+                    return chained;
+                }
+            };
+            class ThenableResolver extends BagResolver {
+                load() {
+                    return thenable;
+                }
+            }
+
+            assert.strictEqual(new ThenableResolver().resolve(), chained);
+        });
     });
 });
 

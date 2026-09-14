@@ -30,6 +30,7 @@ export class BagNode {
         this._parentBag = null;
         this._resolver = null;
         this._nodeSubscribers = {};
+        this._onChangedValue = null;
         this.nodeTag = nodeTag;
         this.xmlTag = xmlTag;
         this._invalidReasons = [];
@@ -63,7 +64,13 @@ export class BagNode {
     }
 
     set parentBag(parentBag) {
+        if (parentBag === null && this._value?.parentNode === this) {
+            this._value.setBackref();
+        }
         this._parentBag = parentBag;
+        if (parentBag?.backref && this._value && typeof this._value._htraverse === "function") {
+            this._value.setBackref(this, parentBag);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -148,37 +155,36 @@ export class BagNode {
         else if (value instanceof BagNode) {
             attributes = attributes || {};
             Object.assign(attributes, value._attr);
+            if (value.resolver) {
+                this.resolver = value.resolver;
+            }
             value = value._value;
         }
 
         const oldvalue = this._value;
+        if (oldvalue !== value && oldvalue?.parentNode === this) {
+            oldvalue.setBackref();
+        }
         this._value = value;
 
-        // Check if actually changed
-        let changed = oldvalue !== this._value;
-        if (!changed && attributes) {
-            for (const [attrK, attrV] of Object.entries(attributes)) {
-                if (this._attr[attrK] !== attrV) {
-                    changed = true;
-                    break;
-                }
-            }
-        }
-
-        trigger = trigger && changed;
-
-        // Event type: 'upd_value' for value-only, 'upd_value_attr' for combined
-        let evt = 'upd_value';
+        const valueChanged = oldvalue !== this._value;
+        const callbackTrigger = trigger == null ? true : trigger;
         let attrsDiff = null;
 
         if (attributes !== null) {
-            evt = 'upd_value_attr';
-            // Call setAttr with trigger=false: it must not emit its own
-            // 'upd_attrs' event, the combined 'upd_value_attr' covers both
+            // Apply attributes silently; emit one event for the actual changes.
             const oldattrSnapshot = { ...this._attr };
             this.setAttr(attributes, false, updattr, removeNullAttributes);
             const diff = this._buildAttrDiff(oldattrSnapshot, this._attr);
             attrsDiff = Object.keys(diff).length > 0 ? diff : null;
+        }
+
+        trigger = callbackTrigger && (valueChanged || attrsDiff !== null);
+        const evt = attrsDiff ? (valueChanged ? 'upd_value_attr' : 'upd_attrs') : 'upd_value';
+
+        // Legacy value hook also runs for silent and unchanged assignments.
+        if (this._onChangedValue) {
+            this._onChangedValue(this, value, oldvalue, callbackTrigger);
         }
 
         // Node subscribers receive the real event type and an info object:

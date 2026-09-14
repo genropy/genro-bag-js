@@ -5,6 +5,19 @@ import assert from 'node:assert/strict';
 import { Bag } from '../src/index.js';
 
 describe('XML Serialization', () => {
+    it('fromXml preserves the runtime Bag subclass through nested branches', () => {
+        class SpecializedBag extends Bag {}
+        const bag = SpecializedBag.fromXml('<GenRoBag><branch><value>1</value></branch></GenRoBag>');
+        assert.ok(bag instanceof SpecializedBag);
+        assert.ok(bag.getItem('branch') instanceof SpecializedBag);
+    });
+
+    it('fromXml preserves an empty _T=BAG element as a Bag', () => {
+        class SpecializedBag extends Bag {}
+        const bag = SpecializedBag.fromXml('<GenRoBag><tabroot _T="BAG"/></GenRoBag>');
+        assert.ok(bag.getItem('tabroot') instanceof SpecializedBag);
+        assert.equal(bag.getItem('tabroot').length, 0);
+    });
     describe('toXml', () => {
         it('should serialize simple values', () => {
             const bag = new Bag();
@@ -96,6 +109,14 @@ describe('XML Serialization', () => {
             assert.equal(node.value, 'value');
             assert.equal(node.getAttr('id'), '123');
             assert.equal(node.getAttr('type'), 'string');
+        });
+
+        it('should preserve unknown legacy resolver descriptions as inert attributes', () => {
+            const description = '{"kwargs":{"cacheTime":4}}';
+            const bag = Bag.fromXml(`<root><item _resolver='${description}'></item></root>`);
+
+            assert.equal(bag.getNode('item').getAttr('_resolver'), description);
+            assert.equal(bag.getNode('item').resolver, null);
         });
 
         it('should handle empty elements', () => {

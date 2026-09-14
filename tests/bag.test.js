@@ -6,6 +6,56 @@ import { Bag, BagNode } from '../src/index.js';
 import { BagResolver, BagCbResolver } from '../src/resolver.js';
 
 describe('Bag', () => {
+    it('items returns ordered key/value objects, including null values', () => {
+        const bag = new Bag({first: 1, second: null, third: false});
+        assert.deepStrictEqual(bag.items(), [
+            {key: 'first', value: 1},
+            {key: 'second', value: null},
+            {key: 'third', value: false}
+        ]);
+        assert.deepStrictEqual(new Bag().items(), []);
+    });
+
+    it('items resolves values and preserves nested Bag identity', () => {
+        const bag = new Bag();
+        const child = new Bag({leaf: 1});
+        let loads = 0;
+        bag.setItem('child', child);
+        bag.setItem('resolved', new BagCbResolver({callback: () => ++loads}));
+        const items = bag.items();
+        assert.deepStrictEqual(items, [
+            {key: 'child', value: child},
+            {key: 'resolved', value: 1}
+        ]);
+        assert.strictEqual(items[0].value, child);
+        assert.strictEqual(loads, 1);
+        items[0].key = 'changed';
+        assert.deepStrictEqual(bag.keys(), ['child', 'resolved']);
+    });
+
+    it('adopts BagNode values in object construction without traversing node internals', () => {
+        const source = new Bag();
+        const node = source.setItem('button', 'value', {tag: 'button'});
+        const resolver = new BagCbResolver({callback: () => 'resolved'});
+        node.resolver = resolver;
+
+        const wrapped = new Bag({slot: node});
+
+        assert.strictEqual(wrapped.getNode('slot').staticValue, 'value');
+        assert.strictEqual(wrapped.getNode('slot').getAttr('tag'), 'button');
+        assert.strictEqual(wrapped.getNode('slot').resolver, resolver);
+        assert.strictEqual(wrapped.getNode('slot._parentBag'), null);
+    });
+
+    it('uses the runtime subclass for autocreated and copied child Bags', () => {
+        class SpecializedBag extends Bag {}
+        const bag = new SpecializedBag();
+        bag.setItem('a.b', 1);
+        assert.ok(bag.getItem('a') instanceof SpecializedBag);
+        assert.ok(bag.deepcopy() instanceof SpecializedBag);
+        assert.ok(new SpecializedBag({a: {b: 1}}).getItem('a') instanceof SpecializedBag);
+    });
+
     describe('setItem and getItem', () => {
         it('should set and get a simple value', () => {
             const bag = new Bag();
@@ -345,6 +395,26 @@ describe('Bag', () => {
     });
 
     describe('getNode', () => {
+        it('marks the final autocreated node with the autocreate reason', () => {
+            const bag = new Bag();
+            const events = [];
+            bag.subscribe('test', {insert: event => events.push(event)});
+
+            bag.getNode('store.path', true, true);
+
+            assert.deepEqual(events.map(event => event.reason), ['autocreate', 'autocreate']);
+        });
+        it('getNodeByAttr never resolves nodes while traversing', () => {
+            let loads = 0;
+            const bag = new Bag();
+            bag.setItem('remote', new BagCbResolver({callback: () => ++loads}));
+            const branch = new Bag();
+            const target = branch.setItem('target', null, {nodeId: 'wanted'});
+            bag.setItem('branch', branch);
+
+            assert.equal(bag.getNodeByAttr('nodeId', 'wanted'), target);
+            assert.equal(loads, 0);
+        });
         it('should return the BagNode at path', () => {
             const bag = new Bag();
             bag.setItem('item', 42, { color: 'red' });
@@ -376,6 +446,24 @@ describe('Bag', () => {
     });
 
     describe('backref system', () => {
+        it('updates parent links when an already-backed Bag is reparented', () => {
+            const first = new Bag();
+            const second = new Bag();
+            const child = new Bag({value: 1});
+            const firstNode = first.setItem('child', child);
+            first.setBackref();
+            const secondNode = second.setItem('child', child);
+            second.setBackref();
+
+            child.setBackref(secondNode, second);
+
+            assert.equal(child.parent, second);
+            assert.equal(child.parentNode, secondNode);
+            assert.notEqual(child.parentNode, firstNode);
+            child.clearBackref();
+            assert.equal(child.parent, null);
+            assert.equal(child.parentNode, null);
+        });
         it('should enable backref with setBackref', () => {
             const bag = new Bag();
             assert.strictEqual(bag.backref, false);
@@ -1476,7 +1564,7 @@ describe('Bag', () => {
             bag.setItem('a', 'original');
             bag.setItem('b', 'also original');
 
-            bag.update({ a: null, b: 'changed' }, true);
+            bag.update({ a: null, b: 'changed' }, null, null, true);
 
             assert.strictEqual(bag.getItem('a'), 'original');  // Not overwritten with null
             assert.strictEqual(bag.getItem('b'), 'changed');
@@ -1486,7 +1574,7 @@ describe('Bag', () => {
             const bag = new Bag();
             bag.setItem('a', 'original');
 
-            bag.update({ a: null }, false);
+            bag.update({ a: null }, null, null, false);
 
             assert.strictEqual(bag.getItem('a'), null);
         });
