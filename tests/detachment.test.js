@@ -25,6 +25,28 @@ for (const operation of ['replace', 'null', 'pop', 'clear']) {
         assert.equal(events.length, 1);
     });
 }
+test('delete subscribers see popped nodes still attached; detachment follows', () => {
+    const root = new Bag(); root.setBackref();
+    root.setItem('outer.child', new Bag({x: 1}));
+    const inner = root.getItem('outer');
+    const node = inner.getNode('child');
+    const seen = [];
+    root.subscribe('test', {delete: e => seen.push([e.node.parentBag, e.node.parentNode?.label])});
+    root.popNode('outer.child');
+    assert.deepEqual(seen, [[inner, 'outer']]);
+    assert.equal(node.parentBag, null);
+    assert.equal(node.parentNode, null);
+});
+test('delete subscribers see cleared nodes still attached; detachment follows', () => {
+    const root = new Bag(); root.setBackref();
+    root.setItem('a', 1); root.setItem('b', 2);
+    const nodes = root.getNodes().slice();
+    const seen = [];
+    root.subscribe('test', {delete: e => seen.push(e.node.map(n => n.parentBag))});
+    root.clear();
+    assert.deepEqual(seen, [[root, root]]);
+    assert.deepEqual(nodes.map(n => n.parentBag), [null, null]);
+});
 test('assigning identical child preserves its parent', () => {
     const root = new Bag(); root.setBackref();
     const child = new Bag(); root.setItem('child', child);

@@ -411,6 +411,7 @@ export class Bag {
             if (this.backref) {
                 this._onNodeDeleted(node, p, reason);
             }
+            node.parentBag = null;
             return node;
         }
         return null;
@@ -488,6 +489,9 @@ export class Bag {
         this._nodes.clear();
         if (this.backref) {
             this._onNodeDeleted(oldNodes, -1);
+        }
+        for (const node of oldNodes) {
+            node.parentBag = null;
         }
     }
 

@@ -4,4 +4,4 @@ TYTX.setDecimalLibrary('number');
 
 export {TYTX};
 export * from './index.js';
-export const version = '0.5.1';
+export const version = '0.5.2';

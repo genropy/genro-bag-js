@@ -285,7 +285,6 @@ export class BagNodeContainer {
             if (idx >= 0) {
                 this._list.splice(idx, 1);
             }
-            node.parentBag = null;
             return node;
         }
         return null;
@@ -314,9 +313,6 @@ export class BagNodeContainer {
      * Clear all elements.
      */
     clear() {
-        for (const node of this._list) {
-            node.parentBag = null;
-        }
         this._dict = {};
         this._list = [];
     }
