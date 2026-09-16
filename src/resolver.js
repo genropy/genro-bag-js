@@ -162,7 +162,7 @@ export class BagResolver {
         const merged = { ...defaults, ...kwargs };
 
         // Extract internal params
-        this._cacheTime = merged.cacheTime;
+        this.cacheTime = merged.cacheTime;
         this._readOnly = merged.readOnly;
         this._asBag = merged.asBag;
         this._retryPolicy = merged.retryPolicy;
@@ -238,6 +238,9 @@ export class BagResolver {
      * @param {number} value
      */
     set cacheTime(value) {
+        if (typeof value === 'boolean') {
+            throw new TypeError('cacheTime must be numeric; use a negative value for infinite caching');
+        }
         this._cacheTime = value;
     }
 

@@ -11,7 +11,7 @@ import { fromTytx } from 'genro-tytx';
  */
 export class BagNodeContainer {
     constructor() {
-        this._dict = {};     // maps label -> BagNode
+        this._dict = Object.create(null);     // maps label -> BagNode
         this._list = [];     // BagNodes in order
         this._parentBag = null;
     }
@@ -313,7 +313,7 @@ export class BagNodeContainer {
      * Clear all elements.
      */
     clear() {
-        this._dict = {};
+        this._dict = Object.create(null);
         this._list = [];
     }
 

@@ -351,26 +351,11 @@ describe('BagNode', () => {
         });
     });
 
-    // Aligned with Python genro-bag 0.11.0
-    describe('isValid and _invalidReasons', () => {
-        it('should be valid by default', () => {
+    describe('retired validation surface', () => {
+        it('does not provide validation state or validity properties', () => {
             const node = new BagNode(null, 'test', 42);
-            assert.strictEqual(node.isValid, true);
-            assert.deepStrictEqual(node._invalidReasons, []);
-        });
-
-        it('should become invalid when reasons are added', () => {
-            const node = new BagNode(null, 'test', 42);
-            node._invalidReasons.push('required field missing');
-            assert.strictEqual(node.isValid, false);
-        });
-
-        it('should become valid again when reasons are cleared', () => {
-            const node = new BagNode(null, 'test', 42);
-            node._invalidReasons.push('error');
-            assert.strictEqual(node.isValid, false);
-            node._invalidReasons.length = 0;
-            assert.strictEqual(node.isValid, true);
+            assert.equal('isValid' in node, false);
+            assert.equal('_invalidReasons' in node, false);
         });
     });
 
