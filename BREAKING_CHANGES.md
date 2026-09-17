@@ -1,5 +1,17 @@
 # Breaking changes
 
+## 0.7.0
+
+### Empty-path assignment
+
+Native `set_item('', value)` / `setItem('', value)` rejects an empty path
+with ValueError / RangeError, regardless of the value, without modifying the Bag.
+Successful native assignments return the written BagNode. This supersedes the
+empty-path merge introduced in Python 0.24.0 / JS 0.6.0 and the earlier native
+empty-label creation. Builders must validate empty identifiers before insertion.
+Legacy empty-path merge and scalar no-op belong only to compatibility mixins
+(Python camelCase `setItem`, GenroJS `gnrbag_mixin.js`).
+
 ## 0.6.0
 
 ### Reset requires a resolver

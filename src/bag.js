@@ -366,8 +366,7 @@ export class Bag {
     /**
      * Set value at a hierarchical path.
      *
-     * Empty path merges first-level Bag/object/Map entries and returns this Bag.
-     * Nested Bags with matching labels are replaced, not recursively merged.
+     * An empty path raises RangeError without modifying the Bag.
      *
      * Resolver handling:
      *   - resolver=null (default): throw if node already has a resolver
@@ -391,21 +390,7 @@ export class Bag {
             removeNullAttributes = true, reason = null, fired = false,
             doTrigger = true, resolver = null, nodeTag = null) {
         if (path === '') {
-            let entries;
-            if (value instanceof Bag) {
-                entries = Array.from(value.getNodes(), node => [node.label, node.value, {...node.attr}]);
-            } else if (value instanceof Map) {
-                entries = Array.from(value, ([key, item]) => [key, item, null]);
-            } else if (value !== null && typeof value === 'object') {
-                entries = Object.entries(value).map(([key, item]) => [key, item, null]);
-            } else {
-                return this;
-            }
-            for (const [key, item, attributes] of entries) {
-                this.setItem(key, item, attributes, '>', updattr,
-                    removeNullAttributes, reason, false, doTrigger);
-            }
-            return this;
+            throw new RangeError('setItem requires a non-empty path');
         }
 
         const [obj, label] = this._htraverse(path, true);
