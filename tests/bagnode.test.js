@@ -442,10 +442,14 @@ describe('BagNode', () => {
             assert.strictEqual(node.resolver, resolver);
         });
 
-        it('should work when no resolver attached', () => {
-            const node = new BagNode(null, 'test', 42);
-            node.resetResolver();
-            assert.strictEqual(node.staticValue, null);
+        it('should reject reset without a resolver and preserve value and attributes', () => {
+            const node = new BagNode(null, 'test', 42, {caption: 'Kept'});
+            let events = 0;
+            node._onChangedValue = () => events++;
+            assert.throws(() => node.resetResolver(), /node has no resolver/);
+            assert.strictEqual(node.staticValue, 42);
+            assert.deepStrictEqual(node.attr, {caption: 'Kept'});
+            assert.strictEqual(events, 0);
         });
     });
 

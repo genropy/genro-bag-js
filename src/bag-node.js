@@ -22,8 +22,10 @@ export class BagNode {
      * @param {BagResolver} [resolver=null] - Resolver for lazy value loading.
      * @param {string} [nodeTag=null] - Semantic type tag for the node.
      * @param {string} [xmlTag=null] - Original XML tag name (for serialization).
+     * @param {boolean} [removeNullAttributes=true] - Remove null attributes during construction.
      */
-    constructor(parentBag, label, value = null, attr = null, resolver = null, nodeTag = null, xmlTag = null) {
+    constructor(parentBag, label, value = null, attr = null, resolver = null, nodeTag = null, xmlTag = null,
+        removeNullAttributes = true) {
         this.label = label;
         this._value = null;
         this._attr = {};
@@ -40,7 +42,7 @@ export class BagNode {
 
         // Process attributes - trigger=false during construction
         if (attr) {
-            this.setAttr(attr, false);
+            this.setAttr(attr, false, true, removeNullAttributes);
         }
 
         // Process value - trigger=false during construction
@@ -284,9 +286,10 @@ export class BagNode {
      * Reset the resolver and clear the node value.
      */
     resetResolver() {
-        if (this._resolver) {
-            this._resolver.reset();
+        if (!this._resolver) {
+            throw new Error('Cannot reset resolver: node has no resolver');
         }
+        this._resolver.reset();
         this.setValue(null);
     }
 

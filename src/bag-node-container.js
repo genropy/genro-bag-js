@@ -250,7 +250,7 @@ export class BagNodeContainer {
             // New node — use parentBag.nodeClass if available
             const NodeClass = (parentBag && parentBag.nodeClass) ? parentBag.nodeClass : BagNode;
             node = new NodeClass(parentBag, label, queryString ? null : value, attr,
-                resolver, nodeTag);
+                resolver, nodeTag, null, removeNullAttributes);
             const idx = this._parsePosition(nodePosition);
             this._dict[label] = node;
             this._list.splice(idx, 0, node);

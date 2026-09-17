@@ -5,7 +5,9 @@
   "type": "module",
   "main": "./src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./devtools": "./src/devtools/index.js",
+    "./devtools/html-repr.css": "./src/devtools/html-repr.css"
   },
   "files": [
     "src",
