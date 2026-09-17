@@ -1,6 +1,6 @@
 # Breaking changes
 
-## Unreleased
+## 0.6.0
 
 ### Reset requires a resolver
 

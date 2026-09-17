@@ -1,6 +1,6 @@
 {
   "name": "genro-bag-js",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "JavaScript port of genro-bag - hierarchical data container",
   "type": "module",
   "main": "./src/index.js",
